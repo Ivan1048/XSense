@@ -1,4 +1,4 @@
-// Main 3D Canvas scene — assembles park geometry, poles, anonymous dots, and dispatched guards.
+// Main 3D Canvas scene — assembles park geometry, poles, anonymous LiDAR dots, and security guard markers.
 // Camera reset is driven by resetCounter prop to avoid forwardRef complexity.
 import { useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
@@ -11,20 +11,22 @@ import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState } from '../../types';
 
 interface SceneProps {
-  selectedPoleId:       string;
-  onSelectPole:         (id: string) => void;
-  lighting:             LightingMap;
-  showCoverage:         boolean;
-  paused:               boolean;
-  nightMode:            boolean;
-  fallPoleId:           string | null;
-  offlinePoleId:        string | null;
-  acousticPoleId?:      string | null;
-  blockedRouteZone?:    string | null;
-  isRaining?:           boolean;
-  dispatchedGuards?:    DispatchedGuardState[];
-  onFinishGuardReturn?: (guardId: string) => void;
-  resetCounter:         number;
+  selectedPoleId:         string;
+  onSelectPole:           (id: string) => void;
+  onSelectAnonymousDot?:  (dotIndex: number) => void;
+  onSelectGuard?:         (guardId: string) => void;
+  lighting:               LightingMap;
+  showCoverage:           boolean;
+  paused:                 boolean;
+  nightMode:              boolean;
+  fallPoleId:             string | null;
+  offlinePoleId:          string | null;
+  acousticPoleId?:        string | null;
+  blockedRouteZone?:      string | null;
+  isRaining?:             boolean;
+  dispatchedGuards?:      DispatchedGuardState[];
+  onFinishGuardReturn?:   (guardId: string) => void;
+  resetCounter:           number;
 }
 
 interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
@@ -32,6 +34,8 @@ interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
 function World({
   selectedPoleId,
   onSelectPole,
+  onSelectAnonymousDot,
+  onSelectGuard,
   lighting,
   showCoverage,
   paused,
@@ -80,7 +84,7 @@ function World({
         />
       ))}
 
-      {/* Anonymous moving dots — simulated detections, no identity */}
+      {/* Anonymous moving dots — simulated LiDAR detections (no identity, never classified as guards) */}
       {PEOPLE_PATHS.map((path, i) => (
         <AnonymousDot
           key={i}
@@ -88,16 +92,19 @@ function World({
           paused={paused}
           highlight={fallPoleId === 'AS-104' && i === 0}
           stationary={fallPoleId === 'AS-104' && i === 0}
+          onSelect={() => onSelectAnonymousDot?.(i)}
         />
       ))}
 
-      {/* Dispatched Security Guards (correlated with console dispatch roster) */}
+      {/* Security Guards — tracked via separate simulated guard tracking system (blue shield marker) */}
       {dispatchedGuards.map((dg) => (
         <GuardMarker
           key={dg.guardId}
+          guardId={dg.guardId}
           guardName={dg.guardName}
           targetPos={dg.targetPos}
           status={dg.status}
+          onSelect={() => onSelectGuard?.(dg.guardId)}
           onFinishedReturn={() => onFinishGuardReturn?.(dg.guardId)}
         />
       ))}
@@ -108,6 +115,8 @@ function World({
 export default function Scene({
   selectedPoleId,
   onSelectPole,
+  onSelectAnonymousDot,
+  onSelectGuard,
   lighting,
   showCoverage,
   paused,
@@ -147,6 +156,8 @@ export default function Scene({
       <World
         selectedPoleId={selectedPoleId}
         onSelectPole={onSelectPole}
+        onSelectAnonymousDot={onSelectAnonymousDot}
+        onSelectGuard={onSelectGuard}
         lighting={lighting}
         showCoverage={showCoverage}
         paused={paused}

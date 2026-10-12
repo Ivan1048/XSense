@@ -1,30 +1,36 @@
+// Security guard marker — represents a reported location from a separate guard tracking system.
+// Completely distinct from anonymous LiDAR detections: uses a floating blue shield icon, not a circular dot.
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 
 interface GuardMarkerProps {
+  guardId?: string;
   guardName: string;
   targetPos: [number, number]; // [x, z] coordinates of the pole
   status: 'traveling' | 'arrived' | 'returning';
+  onSelect?: () => void;
   onFinishedReturn?: () => void;
 }
 
 const BASE_POS: [number, number] = [0, -18]; // Security Station at North Entrance
 
 export default function GuardMarker({
+  guardId,
   guardName,
   targetPos,
   status,
+  onSelect,
   onFinishedReturn,
 }: GuardMarkerProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
+  const diamondRef = useRef<THREE.Mesh>(null);
   const progressRef = useRef<number>(status === 'arrived' ? 1 : 0);
 
-  // Offset destination slightly so the guard doesn't directly clip inside the pole or fallen dot
-  const destX = targetPos[0] + 1.3;
-  const destZ = targetPos[1] + 0.9;
+  // Offset destination slightly so the guard does not overlap directly on the pole
+  const destX = targetPos[0] + 1.8;
+  const destZ = targetPos[1] + 1.2;
 
   useFrame((state, delta) => {
     // Transit speed: traverses the park pathway over ~4.5 seconds
@@ -49,13 +55,12 @@ export default function GuardMarker({
     const currentZ = BASE_POS[1] + (destZ - BASE_POS[1]) * easeT;
 
     if (groupRef.current) {
-      groupRef.current.position.set(currentX, 0.38, currentZ);
+      groupRef.current.position.set(currentX, 0, currentZ);
     }
 
-    // Gentle pulse animation for the security telemetry halo
-    if (ringRef.current) {
-      const pulse = 1 + 0.15 * Math.sin(state.clock.getElapsedTime() * 3.5);
-      ringRef.current.scale.set(pulse, pulse, 1);
+    // Subtle gentle rotation of the ground locator diamond
+    if (diamondRef.current) {
+      diamondRef.current.rotation.y = state.clock.getElapsedTime() * 1.2;
     }
   });
 
@@ -67,41 +72,69 @@ export default function GuardMarker({
       : 'En Route';
 
   return (
-    <group ref={groupRef} position={[BASE_POS[0], 0.38, BASE_POS[1]]}>
-      {/* Anonymous LiDAR detection cluster (physical dot detected by LiDAR sensor) */}
-      <mesh castShadow>
-        <sphereGeometry args={[0.38, 16, 16]} />
-        <meshStandardMaterial
-          color="#38bdf8"
-          roughness={0.3}
-          metalness={0.1}
-          emissive="#0284c7"
-          emissiveIntensity={0.35}
-        />
-      </mesh>
-
-      {/* Blue security dispatch telemetry ring on the ground */}
+    <group ref={groupRef} position={[BASE_POS[0], 0, BASE_POS[1]]}>
+      {/* Ground GPS waypoint indicator (tactical diamond, not a round LiDAR sphere) */}
       <mesh
-        ref={ringRef}
-        position={[0, -0.32, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
+        ref={diamondRef}
+        position={[0, 0.08, 0]}
+        rotation={[0, Math.PI / 4, 0]}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect?.();
+        }}
       >
-        <ringGeometry args={[0.55, 0.72, 32]} />
-        <meshBasicMaterial
-          color="#38bdf8"
-          transparent
-          opacity={0.65}
-          side={THREE.DoubleSide}
+        <boxGeometry args={[0.32, 0.06, 0.32]} />
+        <meshStandardMaterial
+          color="#0284c7"
+          emissive="#38bdf8"
+          emissiveIntensity={0.6}
         />
       </mesh>
 
-      {/* Professional HTML Dispatch Nameplate (no emojis) */}
-      <Html position={[0, 0.95, 0]} center distanceFactor={26}>
-        <div className="guard-marker-tag">
-          <span className="guard-marker-badge">SECURITY</span>
-          <span className="guard-marker-name">{guardName}</span>
-          <span className="guard-marker-status">· {statusLabel}</span>
-        </div>
+      {/* Slender vertical telemetry stem linking ground coordinate to the floating shield */}
+      <mesh position={[0, 0.8, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, 1.4, 8]} />
+        <meshBasicMaterial color="#38bdf8" transparent opacity={0.65} />
+      </mesh>
+
+      {/* Floating Blue Shield Icon — clearly distinct from LiDAR dots */}
+      <Html position={[0, 1.85, 0]} center distanceFactor={26}>
+        <button
+          className="guard-shield-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect?.();
+          }}
+          title={`${guardName} — Guard Location (Simulated)`}
+        >
+          <div className="guard-shield-icon-wrap" aria-hidden="true">
+            <svg
+              width="26"
+              height="30"
+              viewBox="0 0 24 28"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M12 1L3 5V13C3 19.5 7.5 25.5 12 27C16.5 25.5 21 19.5 21 13V5L12 1Z"
+                fill="#0284c7"
+                stroke="#38bdf8"
+                strokeWidth="2.2"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M12 7V17M7 12H17"
+                stroke="#ffffff"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+          <div className="guard-shield-text">
+            <span className="guard-shield-name">{guardName}</span>
+            <span className="guard-shield-badge">GUARD · {statusLabel}</span>
+          </div>
+        </button>
       </Html>
     </group>
   );

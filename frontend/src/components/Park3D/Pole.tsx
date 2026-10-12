@@ -74,7 +74,7 @@ export default function Pole({
   if (isOffline)         tagClass += ' offline';
   if (hasAcousticRipple) tagClass += ' alert';
 
-  const coverageColor = isOffline ? '#a78bfa' : hasAcousticRipple ? '#f59e0b' : '#55bac9';
+  const coverageColor = isOffline ? '#ef4444' : hasAcousticRipple ? '#f59e0b' : '#55bac9';
 
   return (
     <group position={[x, 0, z]}>
