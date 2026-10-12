@@ -3,8 +3,11 @@ import ParkOverview from './pages/ParkOverview';
 import Incidents from './pages/Incidents';
 import System from './pages/System';
 import ResidentSOS from './pages/ResidentSOS';
+import { ParkProvider, usePark } from './context/ParkContext';
 
 function GuardLayout() {
+  const { activeIncidentsCount } = usePark();
+
   return (
     <div className="guard-app">
       <header className="guard-header">
@@ -27,6 +30,11 @@ function GuardLayout() {
             className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
           >
             Incidents
+            {activeIncidentsCount > 0 && (
+              <span className="nav-badge" aria-label={`${activeIncidentsCount} active incidents`}>
+                {activeIncidentsCount}
+              </span>
+            )}
           </NavLink>
           <NavLink
             to="/system"
@@ -57,12 +65,14 @@ function GuardLayout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Resident SOS — separate mobile-first page at /sos */}
-        <Route path="/sos" element={<ResidentSOS />} />
-        {/* Guard dashboard — all other routes */}
-        <Route path="/*" element={<GuardLayout />} />
-      </Routes>
+      <ParkProvider>
+        <Routes>
+          {/* Resident SOS — separate mobile-first page at /sos */}
+          <Route path="/sos" element={<ResidentSOS />} />
+          {/* Guard dashboard — all other routes */}
+          <Route path="/*" element={<GuardLayout />} />
+        </Routes>
+      </ParkProvider>
     </BrowserRouter>
   );
 }

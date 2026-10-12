@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ZONES, POLES } from '../data/parkData';
+import { usePark } from '../context/ParkContext';
 
 type FlowState = 'idle' | 'sending' | 'received' | 'acknowledged' | 'error';
 type GPSState  = 'idle' | 'acquiring' | 'granted' | 'denied';
 
 export default function ResidentSOS() {
   const [searchParams] = useSearchParams();
+  const { addSOSIncident } = usePark();
 
   const [flowState, setFlowState]         = useState<FlowState>('idle');
   const [gpsState, setGpsState]           = useState<GPSState>('idle');
@@ -43,14 +45,17 @@ export default function ResidentSOS() {
   const submitSOS = async () => {
     setFlowState('sending');
     try {
-      // Phase 1: mock submission. Phase 3 will POST to /api/sos.
-      await new Promise<void>(resolve => setTimeout(resolve, 1400));
-      const ref = 'SOS-' + Date.now().toString(36).toUpperCase().slice(-6);
+      await new Promise<void>(resolve => setTimeout(resolve, 800));
+      const ref = addSOSIncident({
+        zoneId: qrZoneId || selectedZone || undefined,
+        poleId: qrPoleId || undefined,
+        locationShared: locationChoice !== 'none',
+      });
       setRequestRef(ref);
       setFlowState('received');
 
-      // Simulate guard acknowledgement after ~8 s
-      setTimeout(() => setFlowState('acknowledged'), 8000);
+      // Simulate guard acknowledgement after ~5 s
+      setTimeout(() => setFlowState('acknowledged'), 5000);
     } catch {
       setFlowState('error');
     }

@@ -1,8 +1,11 @@
-// System page — sensor/lighting status, privacy info, demo controls placeholder.
+// System page — sensor/lighting status, privacy info, demo controls.
 import StatusLabel from '../components/StatusLabel';
 import { POLES } from '../data/parkData';
+import { usePark } from '../context/ParkContext';
 
 export default function System() {
+  const { lighting, offlinePoleId } = usePark();
+
   return (
     <div className="system-page">
       <h1>System</h1>
@@ -12,17 +15,20 @@ export default function System() {
         {/* Sensor Status */}
         <div className="system-section">
           <h2>Sensor Status</h2>
-          {POLES.map(pole => (
-            <div key={pole.id} className="metric-row">
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
-                  {pole.id}
+          {POLES.map(pole => {
+            const isOffline = offlinePoleId === pole.id;
+            return (
+              <div key={pole.id} className="metric-row">
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                    {pole.id}
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{pole.name}</div>
                 </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{pole.name}</div>
+                <StatusLabel level={isOffline ? 'offline' : 'online'} />
               </div>
-              <StatusLabel level="online" />
-            </div>
-          ))}
+            );
+          })}
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '10px' }}>
             Simulated status — no real hardware connected.
           </p>
@@ -31,17 +37,26 @@ export default function System() {
         {/* Lighting Status */}
         <div className="system-section">
           <h2>Lighting Status</h2>
-          {POLES.map(pole => (
-            <div key={pole.id} className="metric-row">
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
-                  {pole.name}
+          {POLES.map(pole => {
+            const isOffline = offlinePoleId === pole.id;
+            const brightness = lighting[pole.id] ?? 70;
+            const isLow = !isOffline && brightness < 30;
+            return (
+              <div key={pole.id} className="metric-row">
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                    {pole.name}
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    {pole.id} · {isOffline ? 'Offline' : `${brightness}%`}
+                  </div>
                 </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{pole.id}</div>
+                <span className={`metric-value ${isOffline || isLow ? 'warn' : 'ok'}`} style={{ fontSize: '13px' }}>
+                  {isOffline ? 'Offline' : isLow ? 'Review needed' : 'Normal (demo)'}
+                </span>
               </div>
-              <span className="metric-value ok" style={{ fontSize: '13px' }}>Normal (demo)</span>
-            </div>
-          ))}
+            );
+          })}
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '10px' }}>
             Virtual brightness only. Not a measured lux value.
           </p>
@@ -74,8 +89,8 @@ export default function System() {
           <h2>Demo Controls</h2>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             Use the <strong>Park Overview</strong> page to trigger demo scenarios (possible fall,
-            dark pathway, sensor offline). A full scenario management panel with save/reload
-            will be added in a later phase.
+            dark pathway, sensor offline). All triggered simulation events immediately propagate
+            across Park Overview, Incidents, and System.
           </p>
         </div>
 

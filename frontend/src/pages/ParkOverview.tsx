@@ -1,17 +1,11 @@
 // Park Overview — default guard page.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
 // All sensor readings shown here are simulated.
-import { useState, useCallback } from 'react';
 import Scene from '../components/Park3D/Scene';
 import StatusLabel from '../components/StatusLabel';
 import AlertCard from '../components/AlertCard';
-import { POLES, ZONES } from '../data/parkData';
-import { createInitialEvent } from '../data/mockData';
-import type { AlertEvent, LightingMap } from '../types';
-
-function initialLighting(): LightingMap {
-  return Object.fromEntries(POLES.map(p => [p.id, 70]));
-}
+import { POLES } from '../data/parkData';
+import { usePark } from '../context/ParkContext';
 
 function SummaryStats({
   needsAttention,
@@ -41,91 +35,32 @@ function SummaryStats({
 }
 
 export default function ParkOverview() {
-  const [selectedPoleId, setSelectedPoleId] = useState<string>('AS-103');
-  const [lighting, setLighting]             = useState<LightingMap>(initialLighting);
-  const [nightMode, setNightMode]           = useState(true);
-  const [showCoverage, setShowCoverage]     = useState(false);
-  const [paused, setPaused]                 = useState(false);
-  const [fallPoleId, setFallPoleId]         = useState<string | null>(null);
-  const [offlinePoleId, setOfflinePoleId]   = useState<string | null>(null);
-  const [resetCounter, setResetCounter]     = useState(0);
-  const [events, setEvents]                 = useState<AlertEvent[]>([createInitialEvent()]);
+  const {
+    selectedPoleId,
+    setSelectedPoleId,
+    lighting,
+    setPoleLight,
+    nightMode,
+    setNightMode,
+    showCoverage,
+    setShowCoverage,
+    paused,
+    setPaused,
+    fallPoleId,
+    offlinePoleId,
+    resetCounter,
+    resetView,
+    events,
+    triggerFall,
+    triggerDark,
+    triggerOffline,
+    handleReset,
+    needsAttentionCount,
+    darkAreasCount,
+    sensorsOfflineCount,
+  } = usePark();
 
-  const addEvent = useCallback((
-    title:   string,
-    message: string,
-    kind:    AlertEvent['kind'] = 'info',
-    poleId?: string,
-  ) => {
-    const entry: AlertEvent = {
-      id: Date.now() + Math.random(),
-      title,
-      message,
-      at: new Date().toLocaleTimeString(),
-      kind,
-      poleId,
-    };
-    setEvents(prev => [entry, ...prev].slice(0, 15));
-  }, []);
-
-  // Derived summary counts
-  const darkAreas = POLES.filter(
-    p => p.id !== offlinePoleId && (lighting[p.id] ?? 70) < 30
-  ).length;
-  const needsAttention = (fallPoleId ? 1 : 0) + darkAreas;
-  const sensorsOffline = offlinePoleId ? 1 : 0;
-
-  const setPoleLight = (id: string, value: number) => {
-    setLighting(prev => ({ ...prev, [id]: value }));
-    if (value < 30) {
-      const pole = POLES.find(p => p.id === id);
-      addEvent(
-        `Low Lighting — ${id}`,
-        `SIMULATED: Virtual brightness below demo threshold at ${pole?.name}. This is not a measured lux value.`,
-        'warning',
-        id,
-      );
-    }
-  };
-
-  // ── Demo scenario triggers ──────────────────────────────────────────
-  const triggerFall = () => {
-    setFallPoleId('AS-104');
-    setSelectedPoleId('AS-104');
-    addEvent(
-      'Possible Fall — West Loop · AS-104',
-      'SIMULATED: Unusual movement detected. A dot stopping does not prove a fall. Guard review required.',
-      'urgent',
-      'AS-104',
-    );
-  };
-
-  const triggerDark = () => {
-    setPoleLight('AS-102', 0);
-    setSelectedPoleId('AS-102');
-  };
-
-  const triggerOffline = () => {
-    setOfflinePoleId('AS-103');
-    setSelectedPoleId('AS-103');
-    addEvent(
-      'Sensor Offline — Central Path · AS-103',
-      'SIMULATED: AS-103 missed heartbeat. Monitoring may be unavailable in this area. Coverage Warning.',
-      'warning',
-      'AS-103',
-    );
-  };
-
-  const handleReset = () => {
-    setLighting(initialLighting());
-    setFallPoleId(null);
-    setOfflinePoleId(null);
-    setSelectedPoleId('AS-103');
-    setResetCounter(c => c + 1);
-    addEvent('Demo Reset', 'All simulation events cleared. Lighting and sensors restored to default.', 'success');
-  };
-
-  // ── Selected pole info ──────────────────────────────────────────────
+  // Selected pole info
   const selectedPole       = POLES.find(p => p.id === selectedPoleId);
   const selectedBrightness = lighting[selectedPoleId] ?? 70;
   const isSelectedOffline  = offlinePoleId === selectedPoleId;
@@ -141,9 +76,9 @@ export default function ParkOverview() {
           <p>See park activity, lighting and alerts.</p>
         </div>
         <SummaryStats
-          needsAttention={needsAttention}
-          darkAreas={darkAreas}
-          sensorsOffline={sensorsOffline}
+          needsAttention={needsAttentionCount}
+          darkAreas={darkAreasCount}
+          sensorsOffline={sensorsOfflineCount}
         />
       </div>
 
@@ -189,7 +124,7 @@ export default function ParkOverview() {
             <button
               id="reset-view-btn"
               className="btn btn-ghost btn-sm"
-              onClick={() => setResetCounter(c => c + 1)}
+              onClick={resetView}
             >
               ↺ Reset View
             </button>
