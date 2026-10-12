@@ -1,55 +1,88 @@
-# XSense — 3D Park Monitoring Prototype
+# XSense — Park Safety Prototype
 
-An interactive **software-only** prototype of the XSense guard dashboard. It includes a low-poly park (built with code, so no Blender model is required), five clickable sensor poles, anonymous moving dots, simulated LiDAR coverage, adjustable virtual lighting, a possible fall scenario, and an event feed.
+> Privacy-preserving smart park safety system · **Park safety without continuous video.**
 
-> **Simulation only.** Does not process real LiDAR, measure physical brightness, classify audio, or contact security/emergency services. A stopped dot is not evidence of a fall. No personal or location data is collected.
+A software proof of concept. All sensor readings, resident positions and lighting values are **simulated**. No real LiDAR, cameras, or hardware is connected.
 
-## Requirements
-- Node.js 18+ (Node 20+ recommended)
-- npm
-- Internet connection for the first package installation
+---
 
-## Run
+## Project Structure
+
+```
+XSense/
+├── frontend/          # React + TypeScript + Vite + React Three Fiber
+│   └── src/
+│       ├── pages/     # ParkOverview · Incidents · System · ResidentSOS
+│       ├── components/
+│       │   ├── Park3D/   # 3D scene, poles, anonymous dots
+│       │   ├── StatusLabel.tsx
+│       │   └── AlertCard.tsx
+│       ├── data/      # parkData.ts, mockData.ts
+│       ├── services/  # api.ts (FastAPI client)
+│       └── types/     # Shared TypeScript types
+├── backend/           # Python + FastAPI + SQLite (Phase 3)
+│   ├── main.py
+│   ├── routes/        # park · incidents · sos · demo
+│   ├── models/        # SQLAlchemy models (Phase 3)
+│   └── services/      # alert rules, audio inference (later phases)
+└── README.md
+```
+
+---
+
+## Quick Start
+
+### Frontend
 
 ```bash
-cd 3d-park-prototype
+cd frontend
 npm install
 npm run dev
+# Open http://localhost:5173
 ```
 
-Open the localhost URL printed by Vite (usually http://localhost:5173).
-
-For a static production build:
+### Backend (optional for Phase 1 & 2 — frontend is self-contained)
 
 ```bash
-npm run build
-npm run preview
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
 ```
 
-## Controls
-- Drag the 3D view to orbit; scroll/pinch to zoom.
-- Click a pole label or select it in the right-hand panel.
-- **Night mode** changes the scene lighting.
-- **LiDAR coverage** displays an *illustrative* sensing area around each pole.
-- **Pause dots** freezes simulated residents.
-- **Simulate possible fall** freezes one dot and creates a **review event**. This is not a LiDAR inference.
-- **Simulate dark pathway** turns AS-102 off and logs a warning.
-- **Virtual lamp setting** changes the selected pole's light intensity.
-- **Reset demo** restores the lighting and fall simulation.
+---
 
-## Stack (free open-source packages)
-- React — https://react.dev/
-- Three.js — https://threejs.org/
-- React Three Fiber — https://r3f.docs.pmnd.rs/
-- Drei — https://github.com/pmndrs/drei
-- Vite — https://vite.dev/
+## Pages
 
-## Next improvements
-1. Split this single demo file into `components/`, `simulation/` and `features/`.
-2. Replace generated virtual events with a documented event API; show event provenance clearly (`simulated`, `recorded`, `live`).
-3. Add actual 3D park GLB assets exported from Blender as needed, keeping pole IDs stable.
-4. Connect a separate audio-recognition pipeline and provide human-review controls.
-5. Before physical use: field-test LiDAR detection, lighting levels, coverage and privacy safeguards.
+| Route | Description |
+|---|---|
+| `/` | **Park Overview** — 3D park, sensor poles, anonymous dots, demo controls |
+| `/incidents` | **Incidents** — list, filter, workflow (Phase 2) |
+| `/system` | **System** — sensor/lighting status, privacy info |
+| `/sos` | **Resident SOS** — mobile-first help request page (QR access) |
 
-## 3D asset workflow (optional)
-Create scenery in **Blender**, export a `.glb` file, and load it using Drei `useGLTF`. Keep moving dots, warning overlays and dynamic lights as React components rather than baking them into the mesh.
+---
+
+## Implementation Phases
+
+| Phase | Status | Description |
+|---|---|---|
+| 1a | ✅ Done | Project structure, design system, 3D park, navigation |
+| 1b | — | Guard layout refinement |
+| 2a | — | Lighting controls & dark-area warnings |
+| 2b | — | All demo scenarios & alert rules |
+| 2c | — | Incident workflow |
+| 3a | — | Full Resident SOS page |
+| 3b | — | FastAPI + SQLite backend |
+| 3c | — | Frontend–backend integration + WebSocket |
+| 4  | — | YAMNet audio (optional) |
+
+---
+
+## Honest Limitations
+
+- All LiDAR, people positions and lighting values are **simulated**
+- No real emergency services are connected
+- A dot stopping does not prove a fall
+- Sound confidence scores are model outputs, not verified accuracy
+- No production deployment or 24/7 SLA
