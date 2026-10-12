@@ -10,15 +10,18 @@ import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap } from '../../types';
 
 interface SceneProps {
-  selectedPoleId: string;
-  onSelectPole:   (id: string) => void;
-  lighting:       LightingMap;
-  showCoverage:   boolean;
-  paused:         boolean;
-  nightMode:      boolean;
-  fallPoleId:     string | null;
-  offlinePoleId:  string | null;
-  resetCounter:   number;
+  selectedPoleId:    string;
+  onSelectPole:      (id: string) => void;
+  lighting:          LightingMap;
+  showCoverage:      boolean;
+  paused:            boolean;
+  nightMode:         boolean;
+  fallPoleId:        string | null;
+  offlinePoleId:     string | null;
+  acousticPoleId?:   string | null;
+  blockedRouteZone?: string | null;
+  isRaining?:        boolean;
+  resetCounter:      number;
 }
 
 interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
@@ -32,6 +35,9 @@ function World({
   nightMode,
   fallPoleId,
   offlinePoleId,
+  acousticPoleId,
+  blockedRouteZone,
+  isRaining = false,
 }: WorldProps) {
   return (
     <>
@@ -49,8 +55,8 @@ function World({
         shadow-mapSize={[1024, 1024]}
       />
 
-      {/* Static park */}
-      <ParkGeometry />
+      {/* Static park with dynamic blocked path & rain */}
+      <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} />
 
       {/* Sensor poles */}
       {POLES.map((pole) => (
@@ -61,6 +67,7 @@ function World({
           onSelect={onSelectPole}
           isAlert={fallPoleId === pole.id}
           isOffline={offlinePoleId === pole.id}
+          hasAcousticRipple={acousticPoleId === pole.id}
           lightBrightness={
             offlinePoleId === pole.id ? 0 : (lighting[pole.id] ?? 70)
           }
@@ -91,9 +98,11 @@ export default function Scene({
   nightMode,
   fallPoleId,
   offlinePoleId,
+  acousticPoleId,
+  blockedRouteZone,
+  isRaining = false,
   resetCounter,
 }: SceneProps) {
-  // any-typed ref to OrbitControls — types vary across drei versions
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
@@ -104,10 +113,19 @@ export default function Scene({
 
   return (
     <Canvas
+      camera={{ position: [0, 26, 32], fov: 46 }}
       shadows
-      camera={{ position: [30, 35, 39], fov: 48, near: 0.1, far: 250 }}
+      gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
     >
+      <OrbitControls
+        ref={controlsRef}
+        enableDamping
+        dampingFactor={0.06}
+        maxPolarAngle={Math.PI / 2.15}
+        minDistance={8}
+        maxDistance={58}
+      />
       <World
         selectedPoleId={selectedPoleId}
         onSelectPole={onSelectPole}
@@ -117,14 +135,9 @@ export default function Scene({
         nightMode={nightMode}
         fallPoleId={fallPoleId}
         offlinePoleId={offlinePoleId}
-      />
-      <OrbitControls
-        ref={controlsRef}
-        makeDefault
-        minDistance={12}
-        maxDistance={95}
-        maxPolarAngle={Math.PI / 2.15}
-        target={[0, 0, 0]}
+        acousticPoleId={acousticPoleId}
+        blockedRouteZone={blockedRouteZone}
+        isRaining={isRaining}
       />
     </Canvas>
   );

@@ -1,5 +1,8 @@
 // Static low-poly park geometry — terrain, paths, lake, trees, benches, sign.
 // This is a 3D visual only; it does not represent real sensor coverage or safety.
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 import { Text } from '@react-three/drei';
 
 interface BoxProps {
@@ -56,6 +59,49 @@ function Bench({ x, z }: { x: number; z: number }) {
   );
 }
 
+function RainParticles() {
+  const points = useMemo(() => {
+    const coords = [];
+    for (let i = 0; i < 220; i++) {
+      coords.push(
+        (Math.random() - 0.5) * 46,
+        Math.random() * 16,
+        (Math.random() - 0.5) * 46
+      );
+    }
+    return new Float32Array(coords);
+  }, []);
+
+  const ref = useRef<THREE.Points>(null);
+
+  useFrame((_, delta) => {
+    if (ref.current) {
+      const positions = ref.current.geometry.attributes.position.array as Float32Array;
+      for (let i = 1; i < positions.length; i += 3) {
+        positions[i] -= delta * 18;
+        if (positions[i] < 0) {
+          positions[i] = 16;
+        }
+      }
+      ref.current.geometry.attributes.position.needsUpdate = true;
+    }
+  });
+
+  return (
+    <points ref={ref}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={points.length / 3}
+          array={points}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <pointsMaterial size={0.14} color="#93c5fd" transparent opacity={0.65} />
+    </points>
+  );
+}
+
 const TREE_POSITIONS: [number, number][] = [
   [-19, -18], [19, -18], [-19, 18], [19, 18],
   [-18, -7],  [18, -7],  [-18, 5],  [18, 5],
@@ -67,7 +113,12 @@ const BENCH_POSITIONS: [number, number][] = [
   [-8, 2], [-8, 5], [7, 6],
 ];
 
-export default function ParkGeometry() {
+interface ParkGeometryProps {
+  blockedRouteZone?: string | null;
+  isRaining?: boolean;
+}
+
+export default function ParkGeometry({ blockedRouteZone, isRaining = false }: ParkGeometryProps) {
   return (
     <group>
       {/* Ground */}
@@ -104,6 +155,35 @@ export default function ParkGeometry() {
       {BENCH_POSITIONS.map(([x, z], i) => (
         <Bench key={i} x={x} z={z} />
       ))}
+
+      {/* Blocked route barrier visual */}
+      {blockedRouteZone === 'central_path' && (
+        <group position={[0, 0.4, 0]}>
+          <mesh position={[0, 0.35, 0]}>
+            <boxGeometry args={[4.6, 0.28, 0.2]} />
+            <meshStandardMaterial color="#dc2626" />
+          </mesh>
+          <mesh position={[-2.1, 0, 0]}>
+            <cylinderGeometry args={[0.07, 0.07, 0.8, 8]} />
+            <meshStandardMaterial color="#78716c" />
+          </mesh>
+          <mesh position={[2.1, 0, 0]}>
+            <cylinderGeometry args={[0.07, 0.07, 0.8, 8]} />
+            <meshStandardMaterial color="#78716c" />
+          </mesh>
+          <Text
+            position={[0, 0.82, 0]}
+            fontSize={0.4}
+            color="#ef4444"
+            anchorX="center"
+          >
+            ⛔ ROUTE CLOSED
+          </Text>
+        </group>
+      )}
+
+      {/* Rain animation for benign weather scenario */}
+      {isRaining && <RainParticles />}
 
       {/* Park name label */}
       <Text

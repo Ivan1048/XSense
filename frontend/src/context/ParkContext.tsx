@@ -31,6 +31,9 @@ interface ParkContextType {
   setPaused: React.Dispatch<React.SetStateAction<boolean>>;
   fallPoleId: string | null;
   offlinePoleId: string | null;
+  acousticPoleId: string | null;
+  blockedRouteZone: string | null;
+  isRaining: boolean;
   resetCounter: number;
   resetView: () => void;
 
@@ -38,9 +41,13 @@ interface ParkContextType {
   events: AlertEvent[];
   addEvent: (title: string, message: string, kind?: AlertEvent['kind'], poleId?: string) => void;
 
-  // Demo Scenarios
-  triggerFall: () => void;
+  // Demo Scenarios (Phase 2b full suite)
+  triggerSilentFall: () => void;
+  triggerScream: () => void;
+  triggerCombined: () => void;
+  triggerBenignRain: () => void;
   triggerDark: () => void;
+  triggerUnsafeRoute: () => void;
   triggerOffline: () => void;
   handleReset: () => void;
 
@@ -65,6 +72,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [paused, setPaused]                 = useState<boolean>(false);
   const [fallPoleId, setFallPoleId]         = useState<string | null>(null);
   const [offlinePoleId, setOfflinePoleId]   = useState<string | null>(null);
+  const [acousticPoleId, setAcousticPoleId] = useState<string | null>(null);
+  const [blockedRouteZone, setBlockedRouteZone] = useState<string | null>(null);
+  const [isRaining, setIsRaining]           = useState<boolean>(false);
   const [resetCounter, setResetCounter]     = useState<number>(0);
   const [events, setEvents]                 = useState<AlertEvent[]>([createInitialEvent()]);
   const [guards, setGuards]                 = useState<Guard[]>(GUARDS);
@@ -85,7 +95,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       kind,
       poleId,
     };
-    setEvents(prev => [entry, ...prev].slice(0, 20));
+    setEvents(prev => [entry, ...prev].slice(0, 25));
   }, []);
 
   const resetView = useCallback(() => {
@@ -105,8 +115,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [addEvent]);
 
-  // ── Demo Scenario Triggers ──────────────────────────────────────────
-  const triggerFall = useCallback(() => {
+  // ── Phase 2b: Complete Scenario Suite & Alert Rules ─────────────────
+
+  // 1. Silent Possible Fall (AS-104) — Rule: Reviewable without audio
+  const triggerSilentFall = useCallback(() => {
     setFallPoleId('AS-104');
     setSelectedPoleId('AS-104');
 
@@ -119,14 +131,15 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       zoneId: 'west_path',
       zoneName: 'West Loop',
       poleId: 'AS-104',
-      type: 'possible_fall',
-      displayType: 'Possible Fall',
-      priority: 'urgent',
+      type: 'silent_fall',
+      displayType: 'Silent Possible Fall',
+      priority: 'needs_review',
       status: 'open',
-      reason: 'SIMULATED: Dot stopped moving for 45s following sudden deceleration. Visual check advised.',
+      reason: 'SIMULATED: Persistent stationary detection for 45s following abrupt deceleration. No audio detected.',
       sourceMode: 'simulated',
+      score: 0.78,
       activityTrail: [
-        { time: now, action: 'Anomaly flagged by movement simulation', actor: 'System (Simulated)' },
+        { time: now, action: 'Depth/position change anomaly flagged by motion algorithm', actor: 'System (Simulated)' },
       ],
     };
 
@@ -135,12 +148,100 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     addEvent(
       'Possible Fall — West Loop · AS-104',
-      'SIMULATED: Unusual movement detected. A dot stopping does not prove a fall. Guard review required.',
+      'SIMULATED: Depth/position change anomaly. Stationary dot for 45s. Guard review required (silent fall rule applied).',
+      'warning',
+      'AS-104',
+    );
+  }, [addEvent]);
+
+  // 2. Possible Scream / Acoustic Anomaly (AS-101) — Needs Review
+  const triggerScream = useCallback(() => {
+    setAcousticPoleId('AS-101');
+    setSelectedPoleId('AS-101');
+
+    const incidentId = `INC-${Date.now().toString().slice(-4)}`;
+    const now = new Date().toLocaleTimeString();
+
+    const newIncident: Incident = {
+      id: incidentId,
+      createdAt: now,
+      zoneId: 'north_entrance',
+      zoneName: 'North Entrance',
+      poleId: 'AS-101',
+      type: 'acoustic_scream',
+      displayType: 'Possible Distress Sound',
+      priority: 'needs_review',
+      status: 'open',
+      reason: 'SIMULATED: Acoustic classifier matched scream/distress signature (confidence 0.84, YAMNet profile).',
+      sourceMode: 'recorded',
+      score: 0.84,
+      activityTrail: [
+        { time: now, action: 'Acoustic waveform matched distress scream pattern', actor: 'Acoustic Classifier (Recorded)' },
+      ],
+    };
+
+    setIncidents(prev => [newIncident, ...prev]);
+    setSelectedIncidentId(incidentId);
+
+    addEvent(
+      'Acoustic Anomaly — North Entrance · AS-101',
+      'SIMULATED: Acoustic pattern classified as possible scream (score 0.84). Needs review; source visible.',
+      'warning',
+      'AS-101',
+    );
+  }, [addEvent]);
+
+  // 3. Combined Anomaly (Sound + Fall at AS-104) — Escalates to Urgent
+  const triggerCombined = useCallback(() => {
+    setFallPoleId('AS-104');
+    setAcousticPoleId('AS-104');
+    setSelectedPoleId('AS-104');
+
+    const incidentId = `INC-${Date.now().toString().slice(-4)}`;
+    const now = new Date().toLocaleTimeString();
+
+    const newIncident: Incident = {
+      id: incidentId,
+      createdAt: now,
+      zoneId: 'west_path',
+      zoneName: 'West Loop',
+      poleId: 'AS-104',
+      type: 'combined_anomaly',
+      displayType: 'Combined Anomaly (Sound + Fall)',
+      priority: 'urgent',
+      status: 'open',
+      reason: 'SIMULATED: Distress audio signal (score 0.88) corroborated with stationary depth anomaly at AS-104. Multi-modal alert.',
+      sourceMode: 'simulated',
+      score: 0.94,
+      activityTrail: [
+        { time: now, action: 'Co-located acoustic distress and stationary motion signals corroborated', actor: 'Multi-Sensor Fusion' },
+      ],
+    };
+
+    setIncidents(prev => [newIncident, ...prev]);
+    setSelectedIncidentId(incidentId);
+
+    addEvent(
+      '🚨 Combined Anomaly — West Loop · AS-104',
+      'SIMULATED: Urgent corroboration — possible distress sound plus fall detected at West Loop. Immediate guard check advised.',
       'urgent',
       'AS-104',
     );
   }, [addEvent]);
 
+  // 4. Benign Rain / Noise — Rule: No emergency case, telemetry log only
+  const triggerBenignRain = useCallback(() => {
+    setIsRaining(prev => !prev);
+
+    addEvent(
+      'Benign Acoustic Event — Ambient Rain',
+      'SIMULATED: Acoustic telemetry classified ambient precipitation & foliage noise (confidence 0.92 benign). Normal overview maintained.',
+      'info',
+      'AS-102',
+    );
+  }, [addEvent]);
+
+  // 5. Dark Pathway (AS-102) — Lighting Warning
   const triggerDark = useCallback(() => {
     setPoleLight('AS-102', 0);
     setSelectedPoleId('AS-102');
@@ -169,6 +270,48 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedIncidentId(incidentId);
   }, [setPoleLight]);
 
+  // 6. Unsafe Route / Blocked Path (Central Path)
+  const triggerUnsafeRoute = useCallback(() => {
+    const isCurrentlyBlocked = blockedRouteZone === 'central_path';
+    const newBlockedState = isCurrentlyBlocked ? null : 'central_path';
+    setBlockedRouteZone(newBlockedState);
+
+    if (newBlockedState) {
+      const incidentId = `INC-${Date.now().toString().slice(-4)}`;
+      const now = new Date().toLocaleTimeString();
+
+      const newIncident: Incident = {
+        id: incidentId,
+        createdAt: now,
+        zoneId: 'central_path',
+        zoneName: 'Central Path',
+        poleId: 'AS-103',
+        type: 'route_blocked',
+        displayType: 'Unsafe Route — Path Blocked',
+        priority: 'coverage_warning',
+        status: 'open',
+        reason: 'SIMULATED: Path obstruction / maintenance hazard on Central Path. Route marked closed; diverted to West Loop.',
+        sourceMode: 'simulated',
+        activityTrail: [
+          { time: now, action: 'Central Path marked blocked in simulated safety routing system', actor: 'Routing Engine' },
+        ],
+      };
+
+      setIncidents(prev => [newIncident, ...prev]);
+      setSelectedIncidentId(incidentId);
+
+      addEvent(
+        'Route Notice — Central Path Blocked',
+        'SIMULATED: Central Path route closed due to simulated hazard. Safe pedestrian route diversion advised.',
+        'warning',
+        'AS-103',
+      );
+    } else {
+      addEvent('Route Cleared — Central Path', 'Central Path route reopened to normal pedestrian flow.', 'success');
+    }
+  }, [blockedRouteZone, addEvent]);
+
+  // 7. Sensor Offline (AS-103) — Coverage Warning
   const triggerOffline = useCallback(() => {
     setOfflinePoleId('AS-103');
     setSelectedPoleId('AS-103');
@@ -204,10 +347,14 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }, [addEvent]);
 
+  // 8. Reset All Scenarios
   const handleReset = useCallback(() => {
     setLighting(initialLighting());
     setFallPoleId(null);
     setOfflinePoleId(null);
+    setAcousticPoleId(null);
+    setBlockedRouteZone(null);
+    setIsRaining(false);
     setSelectedPoleId('AS-103');
     setResetCounter(c => c + 1);
     setIncidents([]);
@@ -273,7 +420,6 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const guard = guards.find(g => g.id === guardId);
     if (!guard) return false;
 
-    // Update incident
     setIncidents(prev => prev.map(inc => {
       if (inc.id !== id) return inc;
       return {
@@ -287,7 +433,6 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
-    // Update guard availability to busy
     setGuards(prev => prev.map(g => (g.id === guardId ? { ...g, availability: 'busy' } : g)));
     return true;
   }, [guards]);
@@ -326,7 +471,6 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
-    // Free up assigned guard if any
     if (assignedId) {
       setGuards(prev => prev.map(g => (g.id === assignedId ? { ...g, availability: 'available' } : g)));
     }
@@ -351,7 +495,6 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
-    // Free up assigned guard if any
     if (assignedId) {
       setGuards(prev => prev.map(g => (g.id === assignedId ? { ...g, availability: 'available' } : g)));
     }
@@ -398,12 +541,19 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPaused,
     fallPoleId,
     offlinePoleId,
+    acousticPoleId,
+    blockedRouteZone,
+    isRaining,
     resetCounter,
     resetView,
     events,
     addEvent,
-    triggerFall,
+    triggerSilentFall,
+    triggerScream,
+    triggerCombined,
+    triggerBenignRain,
     triggerDark,
+    triggerUnsafeRoute,
     triggerOffline,
     handleReset,
     needsAttentionCount,

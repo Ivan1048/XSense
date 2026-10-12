@@ -190,6 +190,17 @@ export default function Incidents() {
                       {assignedGuard ? `${assignedGuard.displayName} (${assignedGuard.role})` : 'Unassigned'}
                     </div>
                   </div>
+                  {selectedIncident.score !== undefined && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div className="detail-item-label">Detection Confidence</div>
+                      <div className="detail-item-value" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{(selectedIncident.score * 100).toFixed(0)}%</span>
+                        <span style={{ fontSize: '12px', fontWeight: 'normal', color: 'var(--text-muted)' }}>
+                          Model anomaly score only — does not prove certified emergency per safety rules.
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
 

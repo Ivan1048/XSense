@@ -498,6 +498,72 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
 .action-row { display: flex; gap: 8px; }
 .action-row .btn { flex: 1; }
 
+/* ── Scenario Category Sections ──────────────────────────────────── */
+.scenario-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.scenario-category {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r);
+  padding: 10px;
+}
+.scenario-category-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.scenario-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--r);
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  transition: all var(--t);
+  cursor: pointer;
+}
+.scenario-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+.scenario-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.scenario-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.pill-urgent { background: var(--urgent-bg); color: var(--urgent); }
+.pill-review { background: var(--needs-review-bg); color: var(--needs-review); }
+.pill-warn   { background: var(--lighting-bg); color: var(--lighting); }
+.pill-cov    { background: var(--coverage-bg); color: var(--coverage); }
+.pill-norm   { background: var(--ok-bg); color: var(--ok); }
+
+
 /* ── Status Badges ────────────────────────────────────────────────── */
 .badge {
   display: inline-flex;

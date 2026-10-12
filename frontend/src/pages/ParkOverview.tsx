@@ -48,11 +48,18 @@ export default function ParkOverview() {
     setPaused,
     fallPoleId,
     offlinePoleId,
+    acousticPoleId,
+    blockedRouteZone,
+    isRaining,
     resetCounter,
     resetView,
     events,
-    triggerFall,
+    triggerSilentFall,
+    triggerScream,
+    triggerCombined,
+    triggerBenignRain,
     triggerDark,
+    triggerUnsafeRoute,
     triggerOffline,
     handleReset,
     needsAttentionCount,
@@ -64,7 +71,7 @@ export default function ParkOverview() {
   const selectedPole       = POLES.find(p => p.id === selectedPoleId);
   const selectedBrightness = lighting[selectedPoleId] ?? 70;
   const isSelectedOffline  = offlinePoleId === selectedPoleId;
-  const isSelectedAlert    = fallPoleId === selectedPoleId;
+  const isSelectedAlert    = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId;
   const isDark             = !isSelectedOffline && selectedBrightness < 30;
 
   return (
@@ -141,6 +148,9 @@ export default function ParkOverview() {
               nightMode={nightMode}
               fallPoleId={fallPoleId}
               offlinePoleId={offlinePoleId}
+              acousticPoleId={acousticPoleId}
+              blockedRouteZone={blockedRouteZone}
+              isRaining={isRaining}
               resetCounter={resetCounter}
             />
             <span className="canvas-stamp" aria-hidden="true">
@@ -250,43 +260,109 @@ export default function ParkOverview() {
             )}
           </div>
 
-          {/* Demo scenarios */}
+          {/* Demo scenarios — Categorized per Phase 2b */}
           <div className="panel">
-            <h2 className="panel-title">Demo Scenarios</h2>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-              All scenarios are clearly labeled simulated. No real sensors are triggered.
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <h2 className="panel-title" style={{ margin: 0 }}>Demo Scenarios</h2>
+              <span className="badge badge-simulated" style={{ fontSize: '10px' }}>Phase 2b</span>
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.4 }}>
+              Categorized simulation triggers. All signals labeled simulated/recorded.
             </p>
-            <div className="action-group">
-              <button
-                id="demo-fall-btn"
-                className="btn btn-danger btn-sm btn-full"
-                onClick={triggerFall}
-                disabled={!!fallPoleId}
-              >
-                Simulate Possible Fall
-              </button>
-              <button
-                id="demo-dark-btn"
-                className="btn btn-warning btn-sm btn-full"
-                onClick={triggerDark}
-                disabled={(lighting['AS-102'] ?? 70) < 30}
-              >
-                Simulate Dark Pathway
-              </button>
-              <button
-                id="demo-offline-btn"
-                className="btn btn-secondary btn-sm btn-full"
-                onClick={triggerOffline}
-                disabled={!!offlinePoleId}
-              >
-                Simulate Sensor Offline
-              </button>
+
+            <div className="scenario-section">
+              {/* 1. Emergency Scenarios */}
+              <div className="scenario-category">
+                <div className="scenario-category-title">
+                  <span>🚨 Emergency Signals</span>
+                </div>
+                <button
+                  id="demo-silent-fall-btn"
+                  className="scenario-btn"
+                  onClick={triggerSilentFall}
+                  disabled={fallPoleId === 'AS-104' && !acousticPoleId}
+                >
+                  <span>Silent Fall (AS-104)</span>
+                  <span className="scenario-pill pill-review">Review</span>
+                </button>
+                <button
+                  id="demo-scream-btn"
+                  className="scenario-btn"
+                  onClick={triggerScream}
+                  disabled={acousticPoleId === 'AS-101'}
+                >
+                  <span>Distress Scream (AS-101)</span>
+                  <span className="scenario-pill pill-review">Review</span>
+                </button>
+                <button
+                  id="demo-combined-btn"
+                  className="scenario-btn"
+                  onClick={triggerCombined}
+                  disabled={fallPoleId === 'AS-104' && acousticPoleId === 'AS-104'}
+                >
+                  <span>Combined Event (AS-104)</span>
+                  <span className="scenario-pill pill-urgent">Urgent</span>
+                </button>
+              </div>
+
+              {/* 2. Environmental & Infrastructure */}
+              <div className="scenario-category">
+                <div className="scenario-category-title">
+                  <span>⚠️ Environment &amp; Sensors</span>
+                </div>
+                <button
+                  id="demo-dark-btn"
+                  className="scenario-btn"
+                  onClick={triggerDark}
+                  disabled={(lighting['AS-102'] ?? 70) < 30}
+                >
+                  <span>Dark Pathway (AS-102)</span>
+                  <span className="scenario-pill pill-warn">Lighting</span>
+                </button>
+                <button
+                  id="demo-offline-btn"
+                  className="scenario-btn"
+                  onClick={triggerOffline}
+                  disabled={offlinePoleId === 'AS-103'}
+                >
+                  <span>Sensor Offline (AS-103)</span>
+                  <span className="scenario-pill pill-cov">Coverage</span>
+                </button>
+                <button
+                  id="demo-unsafe-route-btn"
+                  className="scenario-btn"
+                  onClick={triggerUnsafeRoute}
+                >
+                  <span>{blockedRouteZone === 'central_path' ? 'Reopen Central Path' : 'Block Central Path'}</span>
+                  <span className="scenario-pill pill-cov">
+                    {blockedRouteZone === 'central_path' ? 'Open' : 'Blocked'}
+                  </span>
+                </button>
+              </div>
+
+              {/* 3. Benign Telemetry */}
+              <div className="scenario-category">
+                <div className="scenario-category-title">
+                  <span>🌿 Benign Telemetry</span>
+                </div>
+                <button
+                  id="demo-rain-btn"
+                  className="scenario-btn"
+                  onClick={triggerBenignRain}
+                >
+                  <span>{isRaining ? 'Stop Rain Simulation' : 'Benign Rain Acoustic'}</span>
+                  <span className="scenario-pill pill-norm">{isRaining ? 'Active' : 'Normal'}</span>
+                </button>
+              </div>
+
+              {/* Reset button */}
               <button
                 id="demo-reset-btn"
                 className="btn btn-ghost btn-sm btn-full"
                 onClick={handleReset}
+                style={{ marginTop: '4px' }}
               >
-                ↺ Demo Reset
+                ↺ Reset All Scenarios
               </button>
             </div>
           </div>
