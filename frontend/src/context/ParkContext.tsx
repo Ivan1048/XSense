@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import type { AlertEvent, Incident, IncidentStatus, LightingMap, Guard, AlertLevel } from '../types';
+import type { AlertEvent, Incident, IncidentStatus, LightingMap, Guard, AlertLevel, DispatchedGuardState } from '../types';
 import { POLES, ZONES, GUARDS } from '../data/parkData';
 import { createInitialEvent } from '../data/mockData';
 
@@ -17,6 +17,8 @@ interface ParkContextType {
 
   // Guards
   guards: Guard[];
+  dispatchedGuards: DispatchedGuardState[];
+  removeDispatchedGuard: (guardId: string) => void;
 
   // 3D & Lighting State
   selectedPoleId: string;
@@ -78,6 +80,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [resetCounter, setResetCounter]     = useState<number>(0);
   const [events, setEvents]                 = useState<AlertEvent[]>([createInitialEvent()]);
   const [guards, setGuards]                 = useState<Guard[]>(GUARDS);
+  const [dispatchedGuards, setDispatchedGuards] = useState<DispatchedGuardState[]>([]);
   const [incidents, setIncidents]           = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
 
@@ -360,6 +363,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIncidents([]);
     setSelectedIncidentId(null);
     setGuards(GUARDS);
+    setDispatchedGuards([]);
     addEvent('Demo Reset', 'All simulation events and incidents cleared. Lighting and sensors restored.', 'success');
   }, [addEvent]);
 
@@ -420,6 +424,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const guard = guards.find(g => g.id === guardId);
     if (!guard) return false;
 
+    const targetIncident = incidents.find(i => i.id === id);
+    const targetPole = targetIncident ? POLES.find(p => p.id === targetIncident.poleId) : undefined;
+    const targetPos: [number, number] = targetPole ? targetPole.position : [0, 0];
+
     setIncidents(prev => prev.map(inc => {
       if (inc.id !== id) return inc;
       return {
@@ -433,9 +441,25 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
+    // Update 3D dispatched officers registry
+    setDispatchedGuards(prev => {
+      const remaining = prev.filter(dg => dg.incidentId !== id && dg.guardId !== guardId);
+      return [
+        ...remaining,
+        {
+          guardId,
+          guardName: guard.displayName,
+          incidentId: id,
+          targetPoleId: targetIncident?.poleId || '',
+          targetPos,
+          status: 'traveling',
+        },
+      ];
+    });
+
     setGuards(prev => prev.map(g => (g.id === guardId ? { ...g, availability: 'busy' } : g)));
     return true;
-  }, [guards]);
+  }, [guards, incidents]);
 
   const markArrived = useCallback((id: string) => {
     const now = new Date().toLocaleTimeString();
@@ -452,6 +476,11 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ],
       };
     }));
+
+    // Update officer position status in 3D scene to arrived
+    setDispatchedGuards(prev => prev.map(dg =>
+      dg.incidentId === id ? { ...dg, status: 'arrived' } : dg
+    ));
   }, [guards]);
 
   const resolveIncident = useCallback((id: string, outcomeNote: string) => {
@@ -470,6 +499,11 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ],
       };
     }));
+
+    // Dispatch officer back to Security Station
+    setDispatchedGuards(prev => prev.map(dg =>
+      dg.incidentId === id ? { ...dg, status: 'returning' } : dg
+    ));
 
     if (assignedId) {
       setGuards(prev => prev.map(g => (g.id === assignedId ? { ...g, availability: 'available' } : g)));
@@ -495,12 +529,21 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
+    // Dispatch officer back to Security Station
+    setDispatchedGuards(prev => prev.map(dg =>
+      dg.incidentId === id ? { ...dg, status: 'returning' } : dg
+    ));
+
     if (assignedId) {
       setGuards(prev => prev.map(g => (g.id === assignedId ? { ...g, availability: 'available' } : g)));
     }
 
     addEvent('False Alarm Recorded', `Case ${id} marked false alarm: ${reasonNote}`, 'info');
   }, [addEvent]);
+
+  const removeDispatchedGuard = useCallback((guardId: string) => {
+    setDispatchedGuards(prev => prev.filter(dg => dg.guardId !== guardId));
+  }, []);
 
   // ── Derived Metrics ─────────────────────────────────────────────────
   const darkAreasCount = useMemo(() => {
@@ -529,6 +572,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     markFalseAlarm,
     addSOSIncident,
     guards,
+    dispatchedGuards,
+    removeDispatchedGuard,
     selectedPoleId,
     setSelectedPoleId,
     lighting,

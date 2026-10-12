@@ -67,6 +67,15 @@ export interface Guard {
   availability: 'available' | 'busy';
 }
 
+export interface DispatchedGuardState {
+  guardId: string;
+  guardName: string;
+  incidentId: string;
+  targetPoleId: string;
+  targetPos: [number, number];
+  status: 'traveling' | 'arrived' | 'returning';
+}
+
 export interface SOSRequest {
   id: string;
   createdAt: string;

@@ -1,4 +1,4 @@
-// Main 3D Canvas scene — assembles park geometry, poles, and anonymous dots.
+// Main 3D Canvas scene — assembles park geometry, poles, anonymous dots, and dispatched guards.
 // Camera reset is driven by resetCounter prop to avoid forwardRef complexity.
 import { useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
@@ -6,22 +6,25 @@ import { OrbitControls } from '@react-three/drei';
 import ParkGeometry from './ParkGeometry';
 import Pole from './Pole';
 import AnonymousDot from './AnonymousDot';
+import GuardMarker from './GuardMarker';
 import { POLES, PEOPLE_PATHS } from '../../data/parkData';
-import type { LightingMap } from '../../types';
+import type { LightingMap, DispatchedGuardState } from '../../types';
 
 interface SceneProps {
-  selectedPoleId:    string;
-  onSelectPole:      (id: string) => void;
-  lighting:          LightingMap;
-  showCoverage:      boolean;
-  paused:            boolean;
-  nightMode:         boolean;
-  fallPoleId:        string | null;
-  offlinePoleId:     string | null;
-  acousticPoleId?:   string | null;
-  blockedRouteZone?: string | null;
-  isRaining?:        boolean;
-  resetCounter:      number;
+  selectedPoleId:       string;
+  onSelectPole:         (id: string) => void;
+  lighting:             LightingMap;
+  showCoverage:         boolean;
+  paused:               boolean;
+  nightMode:            boolean;
+  fallPoleId:           string | null;
+  offlinePoleId:        string | null;
+  acousticPoleId?:      string | null;
+  blockedRouteZone?:    string | null;
+  isRaining?:           boolean;
+  dispatchedGuards?:    DispatchedGuardState[];
+  onFinishGuardReturn?: (guardId: string) => void;
+  resetCounter:         number;
 }
 
 interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
@@ -38,6 +41,8 @@ function World({
   acousticPoleId,
   blockedRouteZone,
   isRaining = false,
+  dispatchedGuards = [],
+  onFinishGuardReturn,
 }: WorldProps) {
   return (
     <>
@@ -85,6 +90,17 @@ function World({
           stationary={fallPoleId === 'AS-104' && i === 0}
         />
       ))}
+
+      {/* Dispatched Security Guards (correlated with console dispatch roster) */}
+      {dispatchedGuards.map((dg) => (
+        <GuardMarker
+          key={dg.guardId}
+          guardName={dg.guardName}
+          targetPos={dg.targetPos}
+          status={dg.status}
+          onFinishedReturn={() => onFinishGuardReturn?.(dg.guardId)}
+        />
+      ))}
     </>
   );
 }
@@ -101,6 +117,8 @@ export default function Scene({
   acousticPoleId,
   blockedRouteZone,
   isRaining = false,
+  dispatchedGuards = [],
+  onFinishGuardReturn,
   resetCounter,
 }: SceneProps) {
   const controlsRef = useRef<any>(null);
@@ -138,6 +156,8 @@ export default function Scene({
         acousticPoleId={acousticPoleId}
         blockedRouteZone={blockedRouteZone}
         isRaining={isRaining}
+        dispatchedGuards={dispatchedGuards}
+        onFinishGuardReturn={onFinishGuardReturn}
       />
     </Canvas>
   );

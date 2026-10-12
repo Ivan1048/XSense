@@ -62,6 +62,8 @@ export default function ParkOverview() {
     triggerUnsafeRoute,
     triggerOffline,
     handleReset,
+    dispatchedGuards,
+    removeDispatchedGuard,
     needsAttentionCount,
     darkAreasCount,
     sensorsOfflineCount,
@@ -151,6 +153,8 @@ export default function ParkOverview() {
               acousticPoleId={acousticPoleId}
               blockedRouteZone={blockedRouteZone}
               isRaining={isRaining}
+              dispatchedGuards={dispatchedGuards}
+              onFinishGuardReturn={removeDispatchedGuard}
               resetCounter={resetCounter}
             />
             <span className="canvas-stamp" aria-hidden="true">
@@ -163,6 +167,10 @@ export default function ParkOverview() {
             <div className="legend-item" role="listitem">
               <span className="legend-dot teal" aria-hidden="true" />
               Anonymous moving dot
+            </div>
+            <div className="legend-item" role="listitem">
+              <span className="legend-dot blue" aria-hidden="true" />
+              Security officer (dispatched)
             </div>
             <div className="legend-item" role="listitem">
               <span className="legend-dot amber" aria-hidden="true" />
