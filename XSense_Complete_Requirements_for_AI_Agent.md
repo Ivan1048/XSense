@@ -97,6 +97,48 @@ Build **two clean, simple, responsive interfaces**:
 - Keep camera movement smooth and restrained; offer **Pause Motion** and respect reduced-motion preferences.
 - Prefer simple geometry/performance over detailed realistic terrain. Keep initial asset count low.
 
+### Guard and Resident Visualization
+
+XSense must clearly distinguish between anonymous people
+detected by LiDAR and security guards whose locations
+come from a separate tracking system.
+
+#### Anonymous People
+- Display all LiDAR-detected people as cyan dots.
+- LiDAR must not identify whether someone is a guard or resident.
+- Do not display names, identities, or personal information.
+- Do not store individual movement histories.
+- All LiDAR positions are simulated in the prototype.
+
+#### Security Guards
+- Display guards using blue shield markers.
+- Guard positions come from a separate simulated
+  guard-location system, not LiDAR.
+- Show the guard's ID and patrol status when selected.
+- Label the location source as "Guard Location (Simulated)".
+- Do not automatically match LiDAR dots with guard markers.
+- A guard may appear as both an anonymous detection
+  and a separate guard marker until reliable matching exists.
+
+#### 3D Map Legend
+- Cyan dot: Person Detected
+- Blue shield: Security Guard
+- Orange marker: Possible Emergency
+- Red marker: Sensor Offline
+
+#### Privacy Requirements
+- No facial recognition or identity detection.
+- No automatic identification of guards through LiDAR.
+- No continuous storage of residents' movement histories.
+- Guard locations must remain separate from anonymous
+  LiDAR detection records.
+
+#### Future Improvements
+- BLE or UWB security badges may be considered for
+  verifying guard locations in future deployments.
+- Badge-based identification is not required for
+  the current software prototype.
+
 **Dark area behavior**
 
 - A simulated light/pole can be set to low or off. Calculate a simple **virtual path brightness status** using predefined path zones and nearby light settings.
