@@ -11,6 +11,7 @@ These rules apply to **Antigravity, Codex, and other AI coding agents** working 
 - `docs/UI_DESIGN.md`: UI changes.
 - `docs/DEVELOPMENT_WORKFLOW.md`: collaboration, review, and permissions.
 - `docs/DECISIONS.md`: agreed decisions.
+- `docs/IMPLEMENTATION_ROADMAP.md`: current phase numbering, dependencies, and completion gates. Implement only the requested phase; do not automatically continue to the next.
 - `XSense_Plan_Comparison.md`: initial plan versus current hybrid direction.
 
 Do not read entire long documents unnecessarily; focus on the relevant sections. If the implementation conflicts with the requirements, report the conflict rather than silently changing the requirements.

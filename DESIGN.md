@@ -356,6 +356,8 @@ Separate `devices` (camera, lidar, audio) from `poles` (lights/possible mounts).
 
 ## 12. Delivery and Validation Plan
 
+The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) defines the seven delivery phases and their completion gates. The items below summarize architectural priorities, not separate phase numbering.
+
 1. Persist incident/SOS/guard actions, validate transitions and availability, remove simulated acknowledgement, and implement retries/reconnection with polling fallback.
 2. Decouple devices from lamp mounts; add camera inventory, estimated coverage, and explicit coverage gaps while preserving existing simulation features.
 3. Demonstrate a small CCTV-covered entrance, LiDAR/audio path, overlap zone, and unknown area; test unavailable video and offline sensors.

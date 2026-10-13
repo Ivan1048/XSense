@@ -76,6 +76,8 @@ uvicorn main:app --reload --port 8000
 
 ## Implementation status and priorities
 
+Follow [the seven-phase implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) one phase at a time; it defines scope, dependencies, and completion gates.
+
 | Area | Current status | Next step |
 |---|---|---|
 | 3D park, scenarios, lighting, guard markers | Browser simulation implemented | Preserve existing behaviour while separating sensors from lamp mounts |

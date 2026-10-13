@@ -45,6 +45,8 @@
 
 ## 4. Recommended next milestone
 
+Implement sequentially using the [seven-phase roadmap](docs/IMPLEMENTATION_ROADMAP.md); begin with persistent backend records, followed by the cross-device response flow.
+
 **One monitored zone → possible distress or SOS → saved incident → actual guard acknowledgement → response → recorded outcome.**
 
 1. Map camera viewing direction/estimated coverage and independently placed LiDAR/audio nodes, with explicit gaps. Survey risk and available infrastructure; confirm data/hardware access.

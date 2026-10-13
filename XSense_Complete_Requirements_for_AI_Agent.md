@@ -518,44 +518,17 @@ Keep simulation logic independent of the 3D renderer so future inputs can replac
 
 **Current baseline:** 3D park, lighting, scenarios, incident UI, SOS UI, and guard animations exist as browser simulations. Backend routes use in-memory data; persistent cross-device state, real audio inference, and camera integration are not complete. Existing acoustic demo labels must be corrected to `simulated` unless actual recorded audio was processed. Do not rebuild completed UI as if absent.
 
-**Next delivery order:**
+Use [the implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) as the single source of phase numbering. It supersedes the original foundation/demo phase sequence:
 
-1. Complete SQLite-backed incidents/SOS, real acknowledgements (remove the five-second timer), server-side transitions and guard availability, consent-aware coordinates, safe retries, and cross-device recovery.
-2. Separate device IDs/locations from lighting mounts; retain existing pole fixtures compatibly. Add CCTV markers, estimated viewing direction/coverage, independent LiDAR/audio markers, and gap/health layers.
-3. Attach source observations and relevant-camera availability to incident details; demonstrate the no-camera fallback without pretending to have a stream.
-4. Integrate recorded audio and evaluate silent events, unrelated signals, harmless behaviour, and degraded coverage. Compare audio-only, LiDAR-only, and combined inputs when suitable recordings/hardware exist.
-5. Plan a small field pilot and optional authorized video integration. Verify staffing, total installation cost, power/networking, and advantage over adding an infrared camera. Hardware procurement, physical SOS buttons, PTZ, and automated CCTV analytics are not authorized by this document.
+1. Persistent backend and incident rules.
+2. Cross-device SOS-to-guard workflow.
+3. Hybrid 3D inventory and coverage.
+4. Explainable alerts and camera context.
+5. Real recorded-audio inference and evaluation.
+6. Authorized CCTV viewing, conditional on access.
+7. Small LiDAR/audio field pilot and comparison.
 
-The original build sequence below is retained as a dependency reference, not a statement that all phases remain unbuilt.
-
-
-**Phase 1 — Foundation**
-
-1. Set up frontend/backend structure and simple shared types.
-2. Establish large-font design system, navigation and guard layout.
-3. Build low-poly 3D park and five selectable poles.
-4. Animate anonymous dots with generated simulated readings and a Pause option.
-
-**Phase 2 — Safety demonstration**
-
-5. Add virtual lighting settings and highlight dark path zones.
-6. Add separate simulated fall, scream, rain, combined, unsafe-route and sensor-offline events.
-7. Implement alert-priority rules and plain-language explanations.
-8. Add incident list, detail, acknowledgement, guard assignment, status and resolution.
-
-**Phase 3 — Resident & records**
-
-9. Build QR-linked resident SOS page with location permission and manual-zone fallback.
-10. Connect SOS to urgent incident creation and true acknowledgement statuses.
-11. Add local database and guard feedback records; connect live WebSocket updates.
-
-**Phase 4 — Actual audio evidence (if feasible)**
-
-12. Integrate YAMNet using selected recorded clips; report it as **Recorded Sample**.
-13. Add local microphone input only if permitted; explicitly label it **Live Input**.
-14. Review negative examples (rain, children, animals, traffic); make no accuracy claims without measured evidence.
-
-**Working rule:** Finish each phase with a usable end-to-end flow before adding another feature. Do not redesign finished pages unnecessarily.
+Finish the requested phase's verification and report before proceeding. Preserve existing UI and simulations; do not imply live camera or hardware capability before integration. Hardware purchases, PTZ, and autonomous emergency dispatch are outside this roadmap's authorization.
 
 ---
 
