@@ -1,23 +1,25 @@
 # XSense — Complete Product, Engineering & Design Requirements
 
-**Version:** 1.0 · **Status:** Implementation specification for an AI coding agent  
-**Project:** Privacy-preserving smart park safety system  
-**Tagline:** **Park safety without continuous video.**
+**Version:** 2.0 · **Updated:** 13 October 2026 · **Status:** Implementation specification for an AI coding agent
 
-> **How to use this file:** Build the **Must** requirements first. Preserve a clear distinction between **working software**, **simulated sensor readings**, and **future physical capabilities**. Do not add features outside the agreed scope without approval. This specification is based on the finalized XSense concept and our agreed 3D dashboard decisions; it is not a claim that sensors or emergency infrastructure have been validated.
+**Project:** Hybrid park safety system — CCTV, targeted LiDAR and sound, SOS, and guard response
+
+**Tagline:** **Understand coverage. Identify possible distress. Coordinate response.**
+
+> **How to use this file:** Build the **Must** requirements first. Preserve a clear distinction between **working software**, **simulated sensor readings**, and **future physical capabilities**. Do not add features outside the agreed scope without approval. This specification records the latest agreed hybrid direction; hardware selection, pilot details, and live video integration remain pending; it is not a claim that sensors or emergency infrastructure have been validated.
 
 ---
 
 ## 1. Product goal
 
-XSense helps park security teams notice possible emergencies, understand **where** help may be needed, and manage their response—without relying on continuous camera footage.
+XSense helps park security teams notice possible emergencies, understand **where** help may be needed, and manage their response using existing CCTV context, targeted LiDAR and sound observations, and direct reports.
 
 Build **two clean, simple, responsive interfaces**:
 
 1. **Guard Dashboard** — staff view an interactive 3D park, anonymous moving dots, lighting warnings, possible emergencies and guard response actions.
 2. **Resident SOS Page** — residents scan a QR code and request help through a simple mobile webpage, without installing an app.
 
-**System inputs:** simulated LiDAR position/fall data, simulated light readings, real or recorded audio run through a sound model, and manual resident SOS. **Outputs:** human-readable alerts, 3D highlighting, lighting demonstrations and incident records.
+**Target inputs:** camera inventory and estimated coverage, independently positioned simulated LiDAR/audio nodes, simulated lighting, recorded or live audio when actually integrated, resident SOS, and manual guard reports. Authorized camera feeds are a later integration, not implied by map markers. **Outputs:** human-readable alerts, 3D highlighting, lighting demonstrations and incident records.
 
 ### Primary user journeys
 
@@ -45,9 +47,13 @@ Build **two clean, simple, responsive interfaces**:
 | M10 | Database | Save sensors, incidents, SOS, feedback and audit events. |
 | M11 | Feedback records | Guard can mark true incident / false alarm / uncertain and add a short note. |
 | M12 | Live updates | New alerts and status changes appear without manual page refresh. |
-| M13 | Privacy | No camera views; no unnecessary raw audio, identity or travel-history storage. |
+| M13 | Data safeguards | Authorized camera access only when integrated; no unnecessary raw audio, biometric identification, or resident travel-history storage. |
 | M14 | Provenance labels | Every incident says **Simulated**, **Recorded Sample** or **Live Audio** as appropriate. |
 | M15 | Accessible, plain-language UI | Large readable text, clear actions and simple names for all features. |
+| M16 | CCTV inventory and coverage | Camera markers, viewing direction, estimated viewing volume, integration and health status. |
+| M17 | Independent sensor placement | LiDAR/audio nodes positioned by risk and coverage needs; lamp mounting is optional. |
+| M18 | Coverage and evidence context | Separate camera, LiDAR, audio, and lighting layers; estimated, verified, degraded, and unknown coverage. |
+| M19 | Honest camera selection | Recommend views by coverage and availability, not proximity alone; show unavailable-view fallback. |
 
 ### Should — after the core journey works
 
@@ -62,9 +68,22 @@ Build **two clean, simple, responsive interfaces**:
 - Real LiDAR hardware or real-world LiDAR fall accuracy claims.
 - Physical streetlight control, brightness sensors, LoRaWAN gateway or cellular integration.
 - Automatic AI retraining from guard feedback.
-- Continuous Safe Run tracking, social matching, drones, facial recognition, personal profiles or camera feeds.
+- Continuous Safe Run tracking, social matching, drones, facial recognition, or personal profiles.
+- Live camera feeds, footage retrieval, PTZ control, and AI CCTV analytics until separately integrated with authorized access; camera inventory and estimated coverage are in the current plan.
 - Autonomous emergency-service dispatch or promises of guaranteed protection.
 - Public production deployment or 24/7 service-level commitments.
+
+---
+
+## 2a. Placement and CCTV decision rules
+
+- Prioritize higher-risk areas with inadequate monitoring based on site inspection, incident records, and security staff input; do not classify a place as unsafe merely because it is dark.
+- Mount LiDAR/audio where visibility, power, networking, stable orientation, weather protection, maintenance access, and tamper protection are suitable. Streetlights remain valid mounts but do not dictate sensor locations.
+- Compare LiDAR with an additional infrared camera and lighting improvements. Sensing does not replace pedestrian lighting; neither CCTV nor LiDAR sees through opaque obstacles.
+- Camera viewing cones are estimates, not identification guarantees. LiDAR coverage must be tested for the target behaviour (standing-person visibility does not establish person-down visibility). Audio coverage is separate and approximate.
+- Start with one small site: CCTV-covered entrance, targeted LiDAR/audio path, overlap example, and explicit unmonitored area. Co-locate LiDAR/audio initially to simplify association; do not equate co-location with proof of a common event.
+- Camera inventory is planned now. Feed viewing, recorded evidence, PTZ, and AI CCTV analytics are distinct later capabilities, requiring compatible equipment and authorized access.
+- On an alert, offer a camera only if its coverage and connection permit a relevant view. A manually configured zone-to-camera mapping is acceptable initially. Otherwise display **“No camera view available. On-site check required.”** No automatic identity matching across camera and LiDAR tracks.
 
 ---
 
@@ -81,7 +100,7 @@ Build **two clean, simple, responsive interfaces**:
 - Large heading: **Park Overview**.
 - One short sentence: **“See park activity, lighting and alerts.”**
 - Three compact summary values: **Needs Attention**, **Dark Areas**, **Sensors Offline**.
-- Main 3D park with selectable poles, resident dots and issue markers.
+- Main 3D park with selectable cameras, independent sensor nodes, lighting poles, anonymous dots, guard markers, and issue markers.
 - Right panel: **Selected Area**, **Recent Alerts**, and clearly named scenario controls (demo only).
 
 **3D viewer requirements**
@@ -91,7 +110,7 @@ Build **two clean, simple, responsive interfaces**:
 - Orbit, zoom, pan/reset-view controls. Add an easy **Reset View** button.
 - Pole click/tap selects it and opens a clear summary: ID, area name, **Sensor Status**, **Lighting**, and current alerts.
 - Dots represent temporary anonymous detections. No names, faces, gender, exact identity or permanent tracking IDs displayed.
-- Optional **Show Sensor Coverage** overlay, clearly marked **Illustrative**; do not claim the coverage radius is measured.
+- Provide separate coverage toggles for CCTV, LiDAR, audio, lighting, and gaps. Mark demo geometry **Estimated / Illustrative**; verified coverage requires site testing for the stated task.
 - Use clear marker differences: normal, needs review, urgent, light problem, sensor offline; include a visible legend and text labels, not color alone.
 - Virtual brightness values and 3D visuals are separate: a nice-looking rendered scene is **not** evidence that a real path is safe or bright enough.
 - Keep camera movement smooth and restrained; offer **Pause Motion** and respect reduced-motion preferences.
@@ -241,7 +260,7 @@ Everything below is simulated unless explicitly connected to an actual input.
 | Benign rain | Simulated benign audio event | No urgent alert. |
 | Possible scream | Recorded audio through YAMNet **or** labeled simulated score | Needs Review; reason and source visible. |
 | Silent possible fall | Simulated depth/position change + duration, not merely a stopped dot | Needs Review without an audio signal. |
-| Combined anomaly | Possible distress sound plus fall near same pole/time | Urgent alert. |
+| Combined anomaly | Related distress sound and movement in a justified spatial/time window | Urgent review; unrelated signals must not be fused. |
 | Resident SOS | Web SOS submission | Urgent incident and accurate status updates. |
 | Dark pathway | Turn a virtual light off / lower area brightness | Highlight area and show Lighting Warning. |
 | Sensor offline | Simulate missed heartbeat | Coverage Warning; uncertain monitoring status. |
@@ -292,7 +311,9 @@ Everything below is simulated unless explicitly connected to an actual input.
                    3D Park / Alerts / Response
 ```
 
-**Important:** 3D scene positions and backend events should share stable pole IDs and path-zone IDs. Visual appearance must never be treated as sensor proof.
+Camera inventory and coverage metadata also feed the dashboard through the park API. Later authorized video references provide optional evidence context; neither inventory nor a viewing cone generates an AI event by itself.
+
+**Important:** 3D scene positions and backend events should share stable device, coverage, and zone IDs. Mount/pole IDs are optional references; a sensor is not a lamp. Visual appearance must never be treated as sensor proof.
 
 ---
 
@@ -303,9 +324,12 @@ Keep one database. Suggested tables and fields (adapt names to the codebase but 
 | Table | Required fields | Purpose |
 |---|---|---|
 | `park_zones` | `id`, `name`, `is_route_open`, `light_threshold_demo` | Named park paths and route safety flags. |
-| `poles` | `id`, `zone_id`, `x`, `z`, `sensor_status`, `light_setting`, `last_seen_at` | Virtual poles and lighting. |
-| `detections` | `id`, `time`, `pole_id`, `event_type`, `score`, `source_mode`, `summary` | Source events without raw recordings. |
-| `incidents` | `id`, `created_at`, `zone_id`, `pole_id`, `type`, `priority`, `status`, `reason`, `source_mode`, `assigned_guard_id` | Guard response cases. |
+| `poles` | `id`, `zone_id`, `x`, `z`, `light_setting`, `last_seen_at` | Lighting assets / possible mounts; legacy sensor fields migrate to devices. |
+| `devices` | `id`, `kind`, `zone_id`, `x`, `y`, `z`, `orientation`, optional `mount_id`, `status`, `last_seen_at`, `source_mode` | Independent CCTV, LiDAR, and audio inventory. |
+| `coverage_areas` | `id`, `device_id`, `geometry`, `task`, `basis`, `health`, `verified_at`, `limitations` | Estimated/verified geometry and healthy/degraded/unknown operational state. |
+| `camera_integrations` | `device_id`, `connection_state`, optional protected `stream_reference` | Later authorized feed links; no credentials exposed to browser fixtures. |
+| `detections` | `id`, `time`, `device_id`, `zone_id`, optional `pole_id`, `event_type`, `score`, `source_mode`, `summary` | Source events without raw recordings. |
+| `incidents` | `id`, `created_at`, `zone_id`, optional `pole_id`, linked detection IDs, `type`, `priority`, `status`, `reason`, `source_mode`, `assigned_guard_id` | Guard response cases. |
 | `guards` | `id`, `display_name`, `role`, `availability` | Demo guard roster; no real personnel data required. |
 | `incident_feedback` | `id`, `incident_id`, `outcome`, `note`, `reviewed_by`, `reviewed_at` | Human-confirmed outcomes. |
 | `sos_requests` | `id`, `created_at`, `zone_id`, `pole_id`, `location_shared`, `approx_lat`, `approx_lng`, `status`, `linked_incident_id` | Manual help requests. |
@@ -325,7 +349,7 @@ Create stable request/response types. Exact paths may vary as long as functional
 
 | Method | Example endpoint | Description |
 |---|---|---|
-| `GET` | `/api/park` | Zones, pole positions, status and virtual lighting. |
+| `GET` | `/api/park` | Target: zones, lighting poles, devices, coverage, and integration status. |
 | `GET` | `/api/incidents` | List/filter incidents. |
 | `GET` | `/api/incidents/{id}` | Incident detail and activity trail. |
 | `POST` | `/api/incidents/{id}/acknowledge` | Guard confirms alert received. |
@@ -343,7 +367,8 @@ Create stable request/response types. Exact paths may vary as long as functional
 {
   "event_id": "EVT-0001",
   "event_type": "possible_fall",
-  "pole_id": "AS-104",
+  "device_id": "LID-001",
+  "pole_id": null,
   "zone_id": "west_path",
   "source_mode": "simulated",
   "priority": "needs_review",
@@ -422,7 +447,8 @@ The sample score is illustrative; it is **not** evidence of model accuracy.
 **Good incident card example**
 
 > **Possible Fall**  
-> **West Path · Pole AS-104**  
+> **West Path · Sensor LID-001**
+>
 > **Needs Review · Simulated**  
 > “Unusual movement was detected. This may not be an emergency.”  
 > **[View Location] [Acknowledge]**
@@ -490,6 +516,19 @@ Keep simulation logic independent of the 3D renderer so future inputs can replac
 
 ## 12. Implementation order for the AI agent
 
+**Current baseline:** 3D park, lighting, scenarios, incident UI, SOS UI, and guard animations exist as browser simulations. Backend routes use in-memory data; persistent cross-device state, real audio inference, and camera integration are not complete. Existing acoustic demo labels must be corrected to `simulated` unless actual recorded audio was processed. Do not rebuild completed UI as if absent.
+
+**Next delivery order:**
+
+1. Complete SQLite-backed incidents/SOS, real acknowledgements (remove the five-second timer), server-side transitions and guard availability, consent-aware coordinates, safe retries, and cross-device recovery.
+2. Separate device IDs/locations from lighting mounts; retain existing pole fixtures compatibly. Add CCTV markers, estimated viewing direction/coverage, independent LiDAR/audio markers, and gap/health layers.
+3. Attach source observations and relevant-camera availability to incident details; demonstrate the no-camera fallback without pretending to have a stream.
+4. Integrate recorded audio and evaluate silent events, unrelated signals, harmless behaviour, and degraded coverage. Compare audio-only, LiDAR-only, and combined inputs when suitable recordings/hardware exist.
+5. Plan a small field pilot and optional authorized video integration. Verify staffing, total installation cost, power/networking, and advantage over adding an infrared camera. Hardware procurement, physical SOS buttons, PTZ, and automated CCTV analytics are not authorized by this document.
+
+The original build sequence below is retained as a dependency reference, not a statement that all phases remain unbuilt.
+
+
 **Phase 1 — Foundation**
 
 1. Set up frontend/backend structure and simple shared types.
@@ -540,6 +579,15 @@ Keep simulation logic independent of the 3D renderer so future inputs can replac
 - [ ] Simulated incident can activate local lights without guaranteeing a safe route.
 - [ ] Blocked/unknown routes **never** produce misleading evacuation guidance.
 
+### Hybrid coverage map
+
+- [ ] CCTV locations, viewing directions, and estimated coverage are selectable and explained.
+- [ ] LiDAR/audio can be placed independently of lamps, including on suitable lamp mounts.
+- [ ] Camera, LiDAR, audio, and lighting layers remain distinct; unknown coverage is never “safe.”
+- [ ] Inventory-only cameras cannot show fabricated live video or evidence.
+- [ ] Related camera selection respects view coverage and availability; no-view fallback works.
+- [ ] Occlusion, stale data, and offline devices visibly degrade coverage.
+
 ### Emergency workflow
 
 - [ ] Benign rain does not generate an urgent alert.
@@ -557,14 +605,14 @@ Keep simulation logic independent of the 3D renderer so future inputs can replac
 - [ ] SOS becomes an urgent case without AI approval.
 - [ ] “Received” and “Guard acknowledged” are distinct and accurate.
 - [ ] Network failure has an honest fallback message and **Call 999** option.
-- [ ] No default raw audio storage, camera feed or person travel history.
+- [ ] No default raw audio storage or resident travel history; camera views require authorized integration and accurate source labels.
 - [ ] Guard incident records can be reviewed without revealing unnecessary personal data.
 
 ### Technical and practical
 
 - [ ] All primary functionality can be demonstrated with free software and **no hardware**.
 - [ ] The prototype runs as one coherent system, not unrelated screens.
-- [ ] Static models, simulated inputs and database records use consistent pole/zone IDs.
+- [ ] Static models, inputs and records use consistent device/zone IDs with optional mount/pole references.
 - [ ] Project README includes run instructions, feature list and honest limitations.
 - [ ] No production safety assurance, LoRaWAN functionality or field-detection accuracy is implied.
 
@@ -586,14 +634,20 @@ Keep simulation logic independent of the 3D renderer so future inputs can replac
 | **Learning database** | Store reviewed outcomes; never automatically retrain from unverified labels. |
 | **Demo integrity** | Never present simulated virtual people or LiDAR readings as real surveillance. |
 
+### Evaluation and irreducible limitations
+
+Silent robberies or other unreported events without distinctive signals may be missed. A stopped dot is not proof of a fall; a sound label is not proof of danger. CCTV improves evidence only where useful footage exists. No alert does not mean no incident.
+
+Measure missed events, false alerts per monitored hour, location error, delivery/acknowledgement delay, recovery after outages, and installed cost. Use safe staged activities and separate evaluation sessions from tuning. Simulation verifies workflow only; real recorded/live evaluation is needed for sensor claims. Guard staffing and response ownership are prerequisites, not software features.
+
 ### Final build instruction to AI agent
 
-> Build XSense as a **clean, readable, privacy-conscious park safety prototype** centered on a 3D Guard Dashboard and an extremely simple Resident SOS page. **Both interfaces must have large text, simple wording and obvious actions.** Complete the flows for **possible emergency → clear alert → human response → recorded outcome**, and **dark area → visible warning → guard inspection**. Use free software. Treat LiDAR, people positions and lighting as simulations; integrate actual sound recognition separately if feasible. Preserve safety warnings, source labels and privacy boundaries. Do not introduce unnecessary features, complicated interface terminology or unsupported real-world performance claims.
+> Build XSense as a **clean, readable, privacy-conscious park safety prototype** centered on a 3D Guard Dashboard and an extremely simple Resident SOS page. Include planned CCTV inventory/viewing coverage and independently located LiDAR/audio nodes, selected by risk and monitoring gaps. Keep live video integration separate from map inventory. **Both interfaces must have large text, simple wording and obvious actions.** Complete the flows for **possible emergency → clear alert → human response → recorded outcome**, and **dark area → visible warning → guard inspection**. Use free software. Treat LiDAR, people positions and lighting as simulations; integrate actual sound recognition separately if feasible. Preserve safety warnings, source labels and privacy boundaries. Do not introduce unnecessary features, complicated interface terminology or unsupported real-world performance claims.
 
 ---
 
 ## 15. Source documents and official tools
 
-**Requirements basis:** XSense Final Project Concept, XSense Tech Stack, and confirmed choices for the hybrid 3D guard view: **moving anonymous dots**, **simulated lighting**, **guard warnings and highlighted dark areas**, **software-only prototype**, **3D view as a core feature**, **limited budget/time/experience**.
+**Requirements basis:** Original XSense concept and the 13 October 2026 hybrid coverage discussion: existing CCTV inventory and viewing coverage, targeted independent LiDAR/audio placement, privacy as a supporting safeguard, and retained choices for the 3D guard view: **moving anonymous dots**, **simulated lighting**, **guard warnings and highlighted dark areas**, **software-only prototype**, **3D view as a core feature**, **limited budget/time/experience**.
 
 **Official free-tool documentation:** [React](https://react.dev/) · [TypeScript](https://www.typescriptlang.org/) · [Vite](https://vite.dev/) · [React Three Fiber](https://r3f.docs.pmnd.rs/) · [Three.js](https://threejs.org/) · [Blender](https://www.blender.org/) · [FastAPI](https://fastapi.tiangolo.com/) · [YAMNet](https://www.tensorflow.org/hub/tutorials/yamnet) · [SQLite](https://sqlite.org/).

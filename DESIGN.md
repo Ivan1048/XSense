@@ -1,19 +1,26 @@
 # XSense — System Design & Architecture Document
 
-> **Privacy-Preserving Smart Park Safety System**  
-> *Park safety without continuous optical surveillance.*
+**Updated: 13 October 2026 · Target architecture, not a completed implementation**
 
----
+> **Hybrid Park Safety System** — Understand coverage. Identify possible distress. Coordinate response.
 
 ## 1. Executive Summary & Vision
 
-**XSense** is a next-generation smart park safety system engineered to protect public recreation areas without relying on invasive, continuous video surveillance or facial recognition. By combining low-resolution spatial sensing (LiDAR / radar / depth), acoustic event classification, intelligent virtual lighting, and a frictionless resident SOS portal, XSense empowers park rangers and municipal guards to detect emergencies rapidly while safeguarding visitor civil liberties and personal privacy.
+XSense brings existing CCTV context, targeted LiDAR and sound detection, resident SOS, and guard response into a shared 3D park interface. The primary value is monitoring awareness and coordinated assistance; privacy remains a supporting safeguard.
 
-### Core Value Proposition
-- **Privacy-by-Design:** No facial recognition, no biometric profiling, no permanent user tracking IDs, and no raw continuous video streams.
-- **Explainable & Trustworthy:** Clear distinction between simulated signals, recorded benchmarks, and live inputs; confidence levels are explicitly presented as model scores rather than absolute proof.
-- **Operator-Centric Experience:** A unified 3D digital twin console designed for low cognitive load during high-stress incidents, featuring large readable typography, high-contrast dark mode, and straightforward lifecycle state transitions.
-- **Frictionless Resident Safety:** A mobile-first, zero-account emergency portal accessible via QR codes stationed throughout the park, offering opt-in location sharing and persistent direct emergency contact options.
+### Agreed direction
+
+- Show CCTV locations, viewing directions, and estimated coverage.
+- Locate LiDAR/audio in higher-risk areas with inadequate monitoring, established through site inspection, incident reports, and staff input. Streetlights are optional mounts, not placement rules.
+- Compare lighting improvements, infrared CCTV, and LiDAR for each gap. Darkness alone does not justify LiDAR, sensing does not replace lighting, and LiDAR cannot see through opaque obstacles.
+- Connect possible distress to location, available evidence, and actual guard actions. Silent unreported incidents with no distinctive signals may still be missed.
+- Keep source observations separate from interpretations; no crime confirmation, automatic identity matching, or guaranteed protection.
+
+### Implementation boundary
+
+The current application contains browser-local simulations, guard markers, lighting, incidents, and SOS UI. FastAPI routes use in-memory stores. SQLite integration, server-enforced lifecycle consistency, cross-device updates, real YAMNet inference, CCTV inventory rendering, and independent sensor placement remain planned. The SOS acknowledgement timer must be removed; no status should claim a guard acted when they did not. The current simulated acoustic scenario's recorded-source label also needs correction.
+
+Camera map inventory is the first stage. Authorized feeds, footage retrieval, PTZ control, and AI CCTV analytics are separate future integrations; markers do not imply any of them.
 
 ---
 
@@ -44,9 +51,9 @@ To avoid ambiguous engineering jargon in frontline security consoles, all intern
 
 | Internal Code | UI Presentation Label | Contextual Meaning |
 |---|---|---|
-| `urgent` | **High Priority / Urgent** | Corroborated emergency or Resident SOS |
+| `urgent` | **High Priority / Urgent** | Related serious observations requiring review, or Resident SOS |
 | `needs_review` | **Review Needed** | Single anomaly requiring human verification |
-| `lighting_warning` | **Low Lighting** | Virtual illumination below safe threshold |
+| `lighting_warning` | **Low Lighting** | Virtual illumination below demo threshold |
 | `coverage_warning` | **Coverage Warning** | Offline sensor or blocked path |
 | `simulated` | **SIMULATED** | Artificially injected demonstration event |
 | `recorded` | **RECORDED SAMPLE** | Pre-recorded audio benchmark (e.g., YAMNet) |
@@ -78,7 +85,7 @@ graph TD
    - **3D Digital Twin Viewer (~65% width):** Interactive real-time spatial map featuring orbit controls, day/night lighting modes, illustrative coverage zones, and dynamic visual indicators (acoustic ripples, blocked path barricades, fall highlights, rain particles).
    - **Summary Stats Bar:** Instant counts for items needing attention, dark pathways, and offline sensors.
    - **Inspection & Control Sidebar (~35% width):**
-     - *Selected Area:* Pole telemetry details, sensor online/offline status, virtual lamp brightness slider (0–100%).
+     - *Selected Area:* Device or lamp details, source/integration status, coverage basis and limitations; brightness controls apply to lamps only.
      - *Categorized Demo Scenarios:* Emergency Signals, Environment & Sensors, and Benign Telemetry.
      - *Recent Alerts Feed:* Chronological stream of incoming telemetry cards.
 
@@ -86,10 +93,10 @@ graph TD
    - **Filter Tabs:** *All*, *Needs Review*, *Urgent*, *In Progress*, and *Closed*.
    - **Split Layout:**
      - *Left List:* Priority-coded incident cards displaying location, event type, timestamp, and provenance tags.
-     - *Right Detail Panel:* Comprehensive incident dossier including exact zone/pole coordinates, detection rationale, model confidence score with safety disclaimers, assigned officer, lifecycle transition action buttons, and a chronological audit trail.
+     - *Right Detail Panel:* Comprehensive incident dossier including zone/device location and optional mount reference, detection rationale, model confidence score with safety disclaimers, assigned officer, lifecycle transition action buttons, and a chronological audit trail.
 
 3. **System Health & Insights (`/system`):**
-   - **Live Sensor Telemetry:** Real-time health status (`Online`, `Needs Attention`, `Offline`), last heartbeat timestamp, and active anomaly notes for every park pole.
+   - **Live Sensor Telemetry:** Real-time health status (`Online`, `Needs Attention`, `Offline`), last heartbeat timestamp, and active anomaly notes for each device, independently of lighting mounts.
    - **Lighting & Pathway Grid:** Current brightness percentages and pathway openness statuses (`Open` vs. `Route Closed`).
    - **Analytics & Incident History:** Summary metrics for active cases, resolved incidents, and false alarms, paired with a historical case archive.
    - **Privacy Policy & Boundaries:** Clear disclosure of data minimization policies.
@@ -99,7 +106,7 @@ graph TD
 - **Zero-Friction Access:** No account registration, password, or application download required; launched via QR code scan at any smart pole or park gate.
 - **Location Context:** Automatic prefill of pole and zone coordinates from QR parameters (`?pole=AS-102&zone=lakeside_path`).
 - **Opt-in Geolocation:** Browser GPS permission requested with transparent explanations; graceful fallback to manual zone selection if denied.
-- **Real-Time Feedback:** Immediate transition through request lifecycle states (*Sending* $\rightarrow$ *Received* $\rightarrow$ *Guard Dispatched*).
+- **Real-Time Feedback:** Server-confirmed transition through request lifecycle states (*Sending* $\rightarrow$ *Received* $\rightarrow$ *Guard Dispatched*).
 - **Persistent Emergency Fallback:** Prominent, persistent "Call 999" action button that remains accessible regardless of network connectivity.
 
 ---
@@ -108,7 +115,7 @@ graph TD
 
 Built using **Three.js**, **React Three Fiber (R3F)**, and **Drei**, the 3D viewer provides an intuitive spatial representation of the park.
 
-### 4.1 Spatial Coordinate Layout
+### 4.1 Existing Demo Pole Layout (not a deployment prescription)
 
 ```
                   [-15, -13]
@@ -126,7 +133,7 @@ Built using **Three.js**, **React Three Fiber (R3F)**, and **Drei**, the 3D view
  AS-104 (West Loop)       AS-105 (East Exit)
 ```
 
-### 4.2 3D Scene Components
+### 4.2 Existing Scene Components (hybrid additions in section 11)
 - **Terrain & Pathways (`ParkGeometry.tsx`):** Low-poly ground mesh, pedestrian asphalt paths, water body with subtle transparency, procedural trees, and park benches.
 - **Dynamic Obstruction Barricade:** When an unsafe route scenario is triggered (e.g., Central Path), a physical 3D barrier mesh with hazard stripes and a `⛔ ROUTE CLOSED` warning tag dynamically appears on the affected pathway.
 - **Atmospheric Effects:** Procedural precipitation particles render across the sky when benign rain acoustics are activated.
@@ -136,13 +143,13 @@ Built using **Three.js**, **React Three Fiber (R3F)**, and **Drei**, the 3D view
   - Illustrative sensor coverage circles on the ground.
   - Interactive HTML nameplates with live status indicators.
   - **Acoustic Pulse Waves:** Concentric expanding ring geometry that pulses outward when acoustic distress is detected at that pole.
-- **Anonymous Movement Dots (`AnonymousDot.tsx`):** Simulated pedestrian markers that traverse circular path trajectories. To preserve absolute privacy, markers display **zero facial geometry, names, or persistent identities**. During fall simulations, the marker stops motion and displays an amber alert halo.
+- **Anonymous Movement Dots (`AnonymousDot.tsx`):** Simulated pedestrian markers that traverse circular path trajectories. Markers display **zero facial geometry, names, or persistent identities**. During fall simulations, the marker stops motion and displays an amber alert halo.
 
 ---
 
 ## 5. State Management & Reactive Data Architecture
 
-State is unified via a central React Context (`ParkContext.tsx`), ensuring seamless synchronization across tabs, routes, and simulation engines.
+Current browser state is unified via React Context (`ParkContext.tsx`) across views in one application instance; this does not synchronize separate browsers or devices. The target source of truth is SQLite through FastAPI, with WebSocket notifications and API/polling recovery. React holds the latest retrieved view, not authoritative guard assignments.
 
 ```mermaid
 graph LR
@@ -179,7 +186,7 @@ graph LR
 
 ## 6. Incident Lifecycle & Workflow State Machine
 
-The incident workflow enforces strict operational consistency, preventing invalid state transitions while recording a tamper-evident audit trail:
+Target workflow: enforce valid transitions and atomic assignments in the backend, with timestamped activity history. The current prototype does not provide tamper-evident storage or complete server enforcement:
 
 ```mermaid
 stateDiagram-v2
@@ -203,10 +210,10 @@ stateDiagram-v2
     FalseAlarm --> [*]
 ```
 
-### Operational Rules Enforced:
+### Operational Rules to Implement and Verify:
 1. **Mandatory Notes:** Closing an incident (either as `Resolved` or `False Alarm`) requires a non-empty human rationale note.
-2. **Guard Availability Tracking:** When an officer is dispatched to an incident, their roster status transitions to `busy`. Upon case resolution or false alarm closure, the officer is automatically returned to `available`.
-3. **Audit Trail Immutability:** Every status change, assignment, and note appends a timestamped log entry recording the action and the responsible actor.
+2. **Guard Availability Tracking:** When an officer is dispatched to an incident, their roster status transitions to `busy`. Release the assignment on closure; represent return travel explicitly and make availability follow an agreed policy. Do not infer availability from animation completion alone.
+3. **Activity History:** Every status change, assignment, and note appends a timestamped log entry recording the action and the responsible actor.
 
 ---
 
@@ -214,12 +221,12 @@ stateDiagram-v2
 
 | Scenario | Input Signature | Alert Level | UI Presentation & Provenance | Operational Action |
 |---|---|---|---|---|
-| **Silent Possible Fall** | Depth/position drop, dot stationary for >45s without sound | `needs_review` | **Review Needed** (`SIMULATED`) | Alert guard; verify visually. Does **not** require audio corroboration. |
-| **Possible Distress Scream** | Acoustic classification score >0.80 | `needs_review` | **Review Needed** (`RECORDED SAMPLE`) | Highlight pole `AS-101` with acoustic pulse waves; prompt guard review. |
-| **Combined Anomaly** | Simultaneous acoustic distress + fall at `AS-104` | `urgent` | **High Priority** (`SIMULATED`) | Corroborated multi-sensor emergency; immediate guard dispatch urged. |
+| **Silent Possible Fall** | Simulated depth/position drop and prolonged low movement (45s is a demo parameter) | `needs_review` | **Review Needed** (`SIMULATED`) | Alert guard; use relevant video if available or an on-site check. Does **not** require audio corroboration. |
+| **Possible Distress Scream** | Simulated acoustic score >0.80 (illustrative, not calibrated) | `needs_review` | **Review Needed** (`SIMULATED`; recorded only after processing a real clip) | Highlight pole `AS-101` with acoustic pulse waves; prompt guard review. |
+| **Combined Anomaly** | Simultaneous acoustic distress + fall at `AS-104` | `urgent` | **High Priority** (`SIMULATED`) | Related observations support urgent human review; not confirmed danger. |
 | **Dark Pathway** | Virtual lamp reduced below 30% | `lighting_warning` | **Low Lighting** (`SIMULATED`) | Separate maintenance notice; path zone highlighted orange. |
 | **Sensor Offline** | 3 consecutive missed telemetry heartbeats | `coverage_warning` | **Coverage Warning** (`SIMULATED`) | Warn monitoring is unavailable in area; never show "all clear". |
-| **Unsafe Route** | Pathway obstruction on Central Path | `coverage_warning` | **Coverage Warning** (`SIMULATED`) | Deploy 3D barrier mesh; advise pedestrian diversion to West Loop. |
+| **Unsafe Route** | Pathway obstruction on Central Path | `coverage_warning` | **Coverage Warning** (`SIMULATED`) | Deploy 3D barrier mesh; offer an alternative only if explicitly verified; otherwise no route guidance. |
 | **Benign Rain / Noise** | Ambient precipitation acoustics | `normal` | **Normal / Info** (`SIMULATED`) | Telemetry log only. **No emergency incident generated.** |
 | **Resident SOS** | Web portal emergency trigger | `urgent` | **High Priority** (`SIMULATED`) | Immediate urgent alert; skips AI validation gate. |
 
@@ -229,7 +236,7 @@ stateDiagram-v2
 
 The backend service is designed in **Python** using **FastAPI**, **Pydantic**, **SQLAlchemy**, and native **WebSockets**.
 
-### 8.1 Database Entity Schema
+### 8.1 Legacy Pole Model (migration reference)
 
 ```mermaid
 erDiagram
@@ -290,29 +297,38 @@ erDiagram
     }
 ```
 
-### 8.2 API Endpoints Matrix
+### 8.2 Target Device and Coverage Model
+
+Separate `devices` (camera, lidar, audio) from `poles` (lights/possible mounts). Device records carry stable ID, kind, zone, x/y/z, orientation, optional mount ID, source mode, heartbeat, and connection status. Detections reference device and zone IDs; pole IDs are optional legacy references. SOS may refer only to a zone and must not require a sensor.
+
+`coverage_areas` reference devices and carry geometry, observation task, estimated/verified basis, healthy/degraded/unknown state, verification time, and limitations. A camera viewing volume is not proof of identification capability; a LiDAR envelope is not proof of person-down detection. Keep audio and lighting geometry separate.
+
+`camera_integrations` later supply protected stream/evidence references and availability. Store credentials server-side, not in scene fixtures. Explicit event-to-camera associations must consider coverage and connection, not nearest distance alone. Initial manual zone mappings are acceptable.
+
+### 8.3 API Endpoints Matrix (target contract)
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/park` | Returns all static pole coordinates, zones, and current lighting |
+| `GET` | `/api/park` | Return zones, devices, coverage metadata, lamps, and integration availability (planned extension) |
 | `GET` | `/api/incidents` | Query and filter active/past incidents |
 | `GET` | `/api/incidents/{id}` | Retrieve incident details and full activity trail |
 | `POST` | `/api/incidents/{id}/acknowledge` | Guard acknowledges receipt of alert |
 | `POST` | `/api/incidents/{id}/assign` | Assign available officer to incident |
 | `POST` | `/api/incidents/{id}/status` | Update incident status (`investigating`, `resolved`, `false_alarm`) |
 | `POST` | `/api/sos` | Anonymous resident SOS submission (rate-limited per IP) |
-| `POST` | `/api/demo/inject` | Inject simulated scenarios (strictly enforces simulated provenance tag) |
-| `WS` | `/ws/updates` | Bi-directional WebSocket stream for real-time dashboard events |
+| `POST` | `/api/demo/events` | Inject simulated scenarios (strictly enforces simulated provenance tag) |
+| `WS` | `/ws/updates` | Planned change notifications; resync authoritative state through API after reconnect |
 
 ---
 
-## 9. Privacy, Ethics & Regulatory Safeguards
+## 9. Data Safeguards and Operational Boundaries
 
-1. **No Continuous Optical Recording:** The system avoids continuous RGB optical recording. Telemetry relies on geometric depth/motion points and acoustic amplitude profiles.
-2. **Absence of Biometrics:** No facial recognition models, gait identification databases, or visitor profiling mechanisms are implemented or supported.
-3. **Strict Data Provenance:** Every signal presented to operators is cryptographically or programmatically labeled (`simulated`, `recorded`, `live`). The system strictly forbids labeling fabricated or mock data as "Live Input".
-4. **Human-in-the-Loop Verification:** Detection confidence levels are explicitly presented as *statistical model scores*, never as proof of an emergency. The system never executes automated 999 calls without human confirmation.
-5. **Resident SOS Consent:** Resident geolocation coordinates are collected exclusively with explicit, opt-in consent and discarded following incident resolution.
+- No facial recognition, biometric profiling, automatic guard identification through LiDAR, or continuous resident movement histories.
+- CCTV views may be linked only through authorized integrations. Existing CCTV retention remains with its operator unless a separate evidence policy is agreed; no new continuous recording or rolling buffer is part of this plan.
+- Label every input simulated, recorded, or live based on its actual origin. Programmatic labels are not cryptographic proof.
+- Do not retain raw audio or point clouds by default. Limit incident access and define retention before deployment; do not claim automatic deletion already exists.
+- SOS coordinates require informed opt-in. Show received only after persistence, acknowledged only after a guard action, and assigned only after a saved assignment.
+- No autonomous emergency-service calls. Unknown coverage is not “all clear”; missing video requires an on-site check when appropriate.
 
 ---
 
@@ -326,5 +342,28 @@ erDiagram
 | **Routing** | React Router v6 | Independent guard and resident route management |
 | **Backend Framework** | Python 3.11, FastAPI, Uvicorn | High-throughput asynchronous REST & WebSocket API |
 | **Data Validation** | Pydantic v2 | Robust request/response schema validation |
-| **Storage Engine** | SQLite + SQLAlchemy 2.0 | Zero-configuration relational database |
+| **Storage Engine** | SQLite + SQLAlchemy 2.0 | Planned persistent relational storage |
 | **Audio Classification** | TensorFlow + YAMNet (Planned) | Acoustic distress inference on audio samples |
+
+## 11. Hybrid Map and Evidence Workflow
+
+1. Operator selects camera, LiDAR/audio device, lamp, or incident; each has a distinct legend entry. Preserve cyan anonymous detections and separate blue simulated guard shields.
+2. Independently toggle CCTV viewing coverage, LiDAR detection areas, audio zones, lighting, and gaps. Demo overlays are estimates; display provenance, freshness, and known obstructions.
+3. Relate movement and sound only within a justified spatial/time window. Keep unrelated observations separate; audio never gates a silent possible fall or SOS.
+4. Incident details explain observations, uncertainty, and camera availability. A compatible authorized feed can later be opened; inventory-only cameras show no invented image.
+5. If no relevant view exists, show **“No camera view available. On-site check required.”** Nearby cameras may face away or be blocked.
+6. Record real acknowledgement, assignment, arrival, outcome, and optional supervisor escalation. Staff availability remains an operational prerequisite.
+
+## 12. Delivery and Validation Plan
+
+1. Persist incident/SOS/guard actions, validate transitions and availability, remove simulated acknowledgement, and implement retries/reconnection with polling fallback.
+2. Decouple devices from lamp mounts; add camera inventory, estimated coverage, and explicit coverage gaps while preserving existing simulation features.
+3. Demonstrate a small CCTV-covered entrance, LiDAR/audio path, overlap zone, and unknown area; test unavailable video and offline sensors.
+4. Evaluate actual recorded audio and suitable LiDAR data when accessible. Compare each modality and their combination on silent events, harmless lookalikes, unrelated signals, occlusion, and noisy conditions.
+5. Before a physical pilot, verify hardware, mounting, power, connectivity, weather performance, maintenance/tampering provisions, staffing, and total installed cost. Compare with adding infrared CCTV or fixing lighting; do not assert LiDAR superiority without evidence.
+
+Measure false alerts per monitored hour, missed events, location error, delivery delay, response times, and recovery from outages. Use safe staged activities and evaluation sessions separate from tuning. Simulation proves workflow only. No universal safe radius, calibrated emergency probability, or field accuracy is claimed.
+
+Open decisions: exact pilot site, hardware/budget, validated thresholds, camera integration permissions/protocols, retention, supervisor escalation policy, and optional physical help buttons. No hardware purchases, PTZ control, automatic emergency dispatch, or new video recording are authorized by this design.
+
+References: [IR camera capabilities](https://whitepapers.axis.com/en-us/ir-in-surveillance), [LiDAR occlusion](https://docs.ouster.com/sdk-docs/features/zone_monitor/using-the-api.html), [audio limitations](https://whitepapers.axis.com/en-us/audio-analytics-for-security-and-safety).

@@ -11,6 +11,7 @@ These rules apply to **Antigravity, Codex, and other AI coding agents** working 
 - `docs/UI_DESIGN.md`: UI changes.
 - `docs/DEVELOPMENT_WORKFLOW.md`: collaboration, review, and permissions.
 - `docs/DECISIONS.md`: agreed decisions.
+- `XSense_Plan_Comparison.md`: initial plan versus current hybrid direction.
 
 Do not read entire long documents unnecessarily; focus on the relevant sections. If the implementation conflicts with the requirements, report the conflict rather than silently changing the requirements.
 
@@ -34,6 +35,19 @@ Do not read entire long documents unnecessarily; focus on the relevant sections.
 - Never commit secrets, tokens, real resident data, or `.env` files.
 - Do not directly change `main`; work in a task branch based on the agreed branch.
 - Agents must request explicit approval before commit/push, dependency changes with security implications, database migrations, or merges; human teammates may push their own feature branches under team policy. Only the designated project lead approves merges to `main`.
+
+## Current product direction — 13 October 2026
+- Build toward a **hybrid park safety system**: existing CCTV context, targeted LiDAR and sound detection, resident SOS, and coordinated guard response. Privacy is a supporting safeguard, not the primary selling point.
+- The 3D map must show camera locations, viewing direction, and **estimated** coverage. Inventory markers do not imply working feeds, footage retrieval, or AI CCTV analytics.
+- Prioritize LiDAR/audio placement in higher-risk areas with inadequate monitoring, based on site inspection, incident reports, and staff input. Streetlights remain valid mounts when suitable; their positions do not dictate placement.
+- Separate device IDs, positions, and coverage from lamp/mount IDs. Preserve existing fixtures compatibly; do not silently relocate sensors without updating their zone/event references.
+- Darkness alone does not justify LiDAR. Compare infrared CCTV and lighting improvements; sensors do not replace pedestrian lighting or see through opaque obstacles.
+- Keep CCTV, LiDAR, audio, lighting, and coverage-gap layers distinct. Show estimated/verified coverage basis and degraded/unknown conditions; never equate a viewing cone with reliable identification or fall detection.
+- Offer a camera view only when coverage and an authorized connection support it, not simply because it is nearest. Otherwise show **“No camera view available. On-site check required.”**
+- Live feeds, evidence retrieval, PTZ control, and AI CCTV analytics are later integrations; do not invent streams, expose camera credentials, or add automatic cross-sensor identity matching.
+- Relate sound and movement using justified time/location windows. Silent possible falls remain reviewable; SOS bypasses AI approval. Unreported incidents without distinctive signals may be missed.
+- Prioritize persisted incident/SOS workflows and real acknowledgements, then independent device/coverage mapping, recorded-input evaluation, and a scoped pilot. Do not treat planned capabilities as implemented.
+- Compare missed events, false alerts per monitored hour, location error, delivery/response delay, and installed cost before claiming superiority over CCTV. Simulation validates workflow, not field accuracy.
 
 ## Product safeguards
 - LiDAR-style detections are **anonymous**, not identified residents or guards.

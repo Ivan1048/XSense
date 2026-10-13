@@ -31,7 +31,8 @@
 - Avoid leaking private incident data through public SOS endpoints. Protect staff-only actions.
 
 ## Contracts and quality
-- Maintain stable pole and zone IDs across the 3D map, API, and database.
+- Maintain stable device and zone IDs across the 3D map, API, and database; lighting/mount IDs are separate optional references. Preserve legacy pole compatibility during migration.
+- Keep coverage geometry, verification basis, health, and integration availability explicit. Camera inventory must not imply a live stream; keep camera credentials out of browser fixtures.
 - Preserve old API compatibility where reasonable; document intentional breaking changes.
 - Verification should match scope: run frontend typecheck/build after frontend changes, backend checks after backend changes, and manual cross-device flows for SOS changes. State if any check could not run.
 - Do not state accuracy, hardware reliability, or production safety claims without evidence.

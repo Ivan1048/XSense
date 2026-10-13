@@ -50,6 +50,13 @@ Technical names such as `AS-104`, or **LiDAR** in an optional explanation, may a
 - A blue shield can overlap a cyan dot: do not silently infer that the LiDAR track has been identified.
 - Label demo, recorded sample, and live input honestly. No fabricated “Live Input.”
 
+## Hybrid coverage presentation
+- Show selectable CCTV markers with viewing direction and estimated coverage; separate LiDAR/audio devices from lighting poles.
+- Provide distinct camera, LiDAR, audio, lighting, and gap layers with a readable legend.
+- Label coverage as estimated or verified for a specific task, and show degraded/unknown conditions. Unknown is not safe; a view cone is not an identification guarantee.
+- Show camera integration availability separately from its map position. Only offer a usable authorized view; otherwise show **“No camera view available. On-site check required.”**
+- Explain placement through risk and monitoring gaps rather than darkness alone. Do not automatically place every sensor on a streetlight.
+
 ## Resident SOS language
 - Initial: **Need Help?** / **Request Help**
 - Submission: **Sending request…**
