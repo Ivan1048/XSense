@@ -259,6 +259,8 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
+  align-items: stretch;
 }
 
 /* ── 3D Viewer ────────────────────────────────────────────────────── */
@@ -452,8 +454,14 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  min-height: 0;
+  max-height: calc(100vh - 130px);
   background: var(--bg-surface);
   border-left: 1px solid var(--border);
+}
+
+.sidebar > .panel {
+  flex-shrink: 0;
 }
 
 .panel {

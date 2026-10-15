@@ -447,7 +447,16 @@ export default function ParkOverview() {
         </div>
 
         {/* ── Right Sidebar ── */}
-        <aside className="sidebar" aria-label="Park details panel">
+        <aside
+          className="sidebar"
+          aria-label="Park details panel"
+          style={{
+            overflowY: 'auto',
+            maxHeight: 'calc(100vh - 130px)',
+            minHeight: 0,
+            paddingRight: '4px',
+          }}
+        >
           {/* 1. Selected Area Panel */}
           <div className="panel">
             <h2 className="panel-title">Selected Area</h2>
@@ -1155,7 +1164,7 @@ export default function ParkOverview() {
           </div>
 
           {/* 3. Recent Alerts Feed */}
-          <div className="panel" style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="panel">
             <h2 className="panel-title">Recent Alerts</h2>
             <div className="feed" role="list" aria-live="polite" aria-label="Recent alerts">
               {events.map((e) => (
