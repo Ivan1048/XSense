@@ -8,7 +8,7 @@ Run:  uvicorn main:app --reload --port 8000
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routes import park, incidents, sos, demo
+from routes import park, incidents, sos, demo, audio
 
 app = FastAPI(
     title="XSense API",
@@ -35,6 +35,7 @@ app.include_router(park.router,      prefix="/api/park",      tags=["Park"])
 app.include_router(incidents.router, prefix="/api/incidents",  tags=["Incidents"])
 app.include_router(sos.router,       prefix="/api/sos",        tags=["SOS"])
 app.include_router(demo.router,      prefix="/api/demo",       tags=["Demo"])
+app.include_router(audio.router,     prefix="/api/audio",      tags=["Audio"])
 
 
 @app.get("/", tags=["Health"])

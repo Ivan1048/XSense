@@ -35,10 +35,10 @@ def _now() -> str:
 def inject_demo_event(payload: DemoEventPayload):
     """Inject a clearly labeled simulated event. Demo mode only.
     source_mode must be 'simulated' or 'recorded' — never 'live'."""
-    if payload.source_mode == "live":
+    if payload.source_mode != "simulated":
         raise HTTPException(
             status_code=400,
-            detail="Cannot inject events labeled 'live'. Use 'simulated' or 'recorded'.",
+            detail="Demo events endpoint only accepts source_mode='simulated'.",
         )
     event = {
         "event_id":    f"EVT-{str(uuid.uuid4())[:6].upper()}",
