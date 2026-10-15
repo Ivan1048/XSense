@@ -327,63 +327,76 @@ export default function ParkOverview() {
             </button>
           </div>
 
-          {/* Emergency Lighting Response Banner */}
-          {lightingNote && (
+          {/* Compact Floating 3D Status & Lighting Pills */}
+          {(lightingNote || statusBanner) && (
             <div
               style={{
                 position: 'absolute',
                 top: '52px',
-                left: '14px',
-                right: '14px',
+                left: '50%',
+                transform: 'translateX(-50%)',
                 zIndex: 10,
-                padding: '8px 14px',
-                background: 'rgba(245, 158, 11, 0.18)',
-                border: '1px solid rgba(251, 191, 36, 0.5)',
-                borderRadius: '8px',
-                fontSize: '13px',
-                color: '#fde68a',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '8px',
-                backdropFilter: 'blur(6px)',
+                gap: '6px',
+                width: 'max-content',
+                maxWidth: 'calc(100% - 32px)',
+                pointerEvents: 'none',
               }}
             >
-              <span style={{ fontSize: '16px' }}>💡</span>
-              <span>
-                <strong>Safety Lighting Response:</strong> {lightingNote}
-              </span>
-            </div>
-          )}
+              {lightingNote && (
+                <div
+                  style={{
+                    padding: '6px 14px',
+                    background: 'rgba(15, 23, 42, 0.90)',
+                    border: '1px solid rgba(251, 191, 36, 0.55)',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    color: '#fde68a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+                    backdropFilter: 'blur(6px)',
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  <span>💡</span>
+                  <span>
+                    <strong>Safety Lighting:</strong> {lightingNote}
+                  </span>
+                </div>
+              )}
 
-          {/* Status Feedback Banner */}
-          {statusBanner && (
-            <div
-              style={{
-                position: 'absolute',
-                top: lightingNote ? '96px' : '52px',
-                left: '14px',
-                right: '14px',
-                zIndex: 10,
-                padding: '8px 14px',
-                background: 'rgba(15, 23, 42, 0.88)',
-                border: '1px solid rgba(45, 184, 176, 0.55)',
-                borderRadius: '8px',
-                fontSize: '13px',
-                color: '#5eead4',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backdropFilter: 'blur(6px)',
-              }}
-            >
-              <span>{statusBanner}</span>
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ padding: '0 6px', fontSize: '11px', minHeight: 'unset' }}
-                onClick={() => setStatusBanner(null)}
-              >
-                ✕
-              </button>
+              {statusBanner && (
+                <div
+                  style={{
+                    padding: '6px 14px',
+                    background: 'rgba(15, 23, 42, 0.92)',
+                    border: '1px solid rgba(45, 184, 176, 0.55)',
+                    borderRadius: '999px',
+                    fontSize: '12px',
+                    color: '#5eead4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+                    backdropFilter: 'blur(6px)',
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  <span>{statusBanner}</span>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: '0 5px', fontSize: '11px', minHeight: 'unset', lineHeight: 1 }}
+                    onClick={() => setStatusBanner(null)}
+                    aria-label="Dismiss status notice"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
