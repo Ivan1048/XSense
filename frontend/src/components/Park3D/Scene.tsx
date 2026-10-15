@@ -1,6 +1,4 @@
-// Main 3D Canvas scene — assembles park geometry, poles, anonymous LiDAR dots, and security guard markers.
-// Camera reset is driven by resetCounter prop to avoid forwardRef complexity.
-import { useEffect, useRef } from 'react';
+ import { useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import ParkGeometry from './ParkGeometry';
@@ -11,22 +9,24 @@ import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState } from '../../types';
 
 interface SceneProps {
-  selectedPoleId:         string;
-  onSelectPole:           (id: string) => void;
-  onSelectAnonymousDot?:  (dotIndex: number) => void;
-  onSelectGuard?:         (guardId: string) => void;
-  lighting:               LightingMap;
-  showCoverage:           boolean;
-  paused:                 boolean;
-  nightMode:              boolean;
-  fallPoleId:             string | null;
-  offlinePoleId:          string | null;
-  acousticPoleId?:        string | null;
-  blockedRouteZone?:      string | null;
-  isRaining?:             boolean;
-  dispatchedGuards?:      DispatchedGuardState[];
-  onFinishGuardReturn?:   (guardId: string) => void;
-  resetCounter:           number;
+  selectedPoleId: string;
+  onSelectPole: (id: string) => void;
+  onSelectAnonymousDot?: (dotIndex: number) => void;
+  onSelectGuard?: (guardId: string) => void;
+  lighting: LightingMap;
+  lightingNote?: string;
+  showCoverage: boolean;
+  paused: boolean;
+  nightMode: boolean;
+  fallPoleId: string | null;
+  isLookalikeStop?: boolean;
+  offlinePoleId: string | null;
+  acousticPoleId?: string | null;
+  blockedRouteZone?: string | null;
+  isRaining?: boolean;
+  dispatchedGuards?: DispatchedGuardState[];
+  onFinishGuardReturn?: (guardId: string) => void;
+  resetCounter: number;
 }
 
 interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
@@ -41,6 +41,7 @@ function World({
   paused,
   nightMode,
   fallPoleId,
+  isLookalikeStop = false,
   offlinePoleId,
   acousticPoleId,
   blockedRouteZone,
@@ -50,13 +51,8 @@ function World({
 }: WorldProps) {
   return (
     <>
-      {/* Sky */}
       <color attach="background" args={[nightMode ? '#08121e' : '#7baacc']} />
-
-      {/* Ambient */}
       <ambientLight intensity={nightMode ? 0.18 : 1.3} />
-
-      {/* Directional sun */}
       <directionalLight
         position={[12, 25, 10]}
         intensity={nightMode ? 0.22 : 2.1}
@@ -64,10 +60,8 @@ function World({
         shadow-mapSize={[1024, 1024]}
       />
 
-      {/* Static park with dynamic blocked path & rain */}
       <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} />
 
-      {/* Sensor poles */}
       {POLES.map((pole) => (
         <Pole
           key={pole.id}
@@ -77,14 +71,11 @@ function World({
           isAlert={fallPoleId === pole.id}
           isOffline={offlinePoleId === pole.id}
           hasAcousticRipple={acousticPoleId === pole.id}
-          lightBrightness={
-            offlinePoleId === pole.id ? 0 : (lighting[pole.id] ?? 70)
-          }
+          lightBrightness={offlinePoleId === pole.id ? 0 : (lighting[pole.id] ?? 70)}
           showCoverage={showCoverage}
         />
       ))}
 
-      {/* Anonymous moving dots — simulated LiDAR detections (no identity, never classified as guards) */}
       {PEOPLE_PATHS.map((path, i) => (
         <AnonymousDot
           key={i}
@@ -92,11 +83,12 @@ function World({
           paused={paused}
           highlight={fallPoleId === 'AS-104' && i === 0}
           stationary={fallPoleId === 'AS-104' && i === 0}
+          isCollapsed={fallPoleId === 'AS-104' && i === 0}
+          isLookalikeStop={isLookalikeStop && i === 0}
           onSelect={() => onSelectAnonymousDot?.(i)}
         />
       ))}
 
-      {/* Security Guards — tracked via separate simulated guard tracking system (blue shield marker) */}
       {dispatchedGuards.map((dg) => (
         <GuardMarker
           key={dg.guardId}
@@ -118,10 +110,12 @@ export default function Scene({
   onSelectAnonymousDot,
   onSelectGuard,
   lighting,
+  lightingNote,
   showCoverage,
   paused,
   nightMode,
   fallPoleId,
+  isLookalikeStop = false,
   offlinePoleId,
   acousticPoleId,
   blockedRouteZone,
@@ -159,10 +153,12 @@ export default function Scene({
         onSelectAnonymousDot={onSelectAnonymousDot}
         onSelectGuard={onSelectGuard}
         lighting={lighting}
+        lightingNote={lightingNote}
         showCoverage={showCoverage}
         paused={paused}
         nightMode={nightMode}
         fallPoleId={fallPoleId}
+        isLookalikeStop={isLookalikeStop}
         offlinePoleId={offlinePoleId}
         acousticPoleId={acousticPoleId}
         blockedRouteZone={blockedRouteZone}

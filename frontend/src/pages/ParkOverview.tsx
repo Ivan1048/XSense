@@ -1,12 +1,44 @@
-// Park Overview — default guard page.
+// Park Overview — default guard console view.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
-// All sensor readings shown here are simulated.
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Scene from '../components/Park3D/Scene';
 import StatusLabel from '../components/StatusLabel';
 import AlertCard from '../components/AlertCard';
 import { POLES } from '../data/parkData';
 import { usePark } from '../context/ParkContext';
+import { getAudioSampleFileUrl } from '../services/api';
+import { recordLiveMicToWavBlob } from '../utils/audioWavEncoder';
+
+const BENCHMARK_SAMPLES = [
+  {
+    id: 'distress_scream_sample.wav',
+    title: 'Vocal Distress / Crying',
+    desc: 'Real vocal distress recording (16kHz WAV)',
+    badgeClass: 'pill-review',
+    badgeText: 'Distress',
+  },
+  {
+    id: 'heavy_rain_thunder.wav',
+    title: 'Heavy Rain & Storm',
+    desc: 'Environmental storm & rain pattering (16kHz WAV)',
+    badgeClass: 'pill-norm',
+    badgeText: 'Benign',
+  },
+  {
+    id: 'park_laughter_chatter.wav',
+    title: 'Park Laughter & Voices',
+    desc: 'Social laughter & voices lookalike (16kHz WAV)',
+    badgeClass: 'pill-norm',
+    badgeText: 'Benign',
+  },
+  {
+    id: 'ambient_park_quiet.wav',
+    title: 'Night Crickets & Wind',
+    desc: 'Quiet evening park baseline (16kHz WAV)',
+    badgeClass: 'pill-cov',
+    badgeText: 'Baseline',
+  },
+];
 
 function SummaryStats({
   needsAttention,
@@ -14,20 +46,29 @@ function SummaryStats({
   sensorsOffline,
 }: {
   needsAttention: number;
-  darkAreas:      number;
+  darkAreas: number;
   sensorsOffline: number;
 }) {
   return (
     <div className="summary-stats">
-      <div className={`stat-card ${needsAttention > 0 ? 'urgent' : 'ok'}`} aria-label={`${needsAttention} items need attention`}>
+      <div
+        className={`stat-card ${needsAttention > 0 ? 'urgent' : 'ok'}`}
+        aria-label={`${needsAttention} items need attention`}
+      >
         <span className="stat-value">{needsAttention}</span>
         <span className="stat-label">Needs Attention</span>
       </div>
-      <div className={`stat-card ${darkAreas > 0 ? 'warning' : 'ok'}`} aria-label={`${darkAreas} dark areas`}>
+      <div
+        className={`stat-card ${darkAreas > 0 ? 'warning' : 'ok'}`}
+        aria-label={`${darkAreas} dark areas`}
+      >
         <span className="stat-value">{darkAreas}</span>
         <span className="stat-label">Dark Areas</span>
       </div>
-      <div className={`stat-card ${sensorsOffline > 0 ? 'offline' : 'ok'}`} aria-label={`${sensorsOffline} sensors offline`}>
+      <div
+        className={`stat-card ${sensorsOffline > 0 ? 'offline' : 'ok'}`}
+        aria-label={`${sensorsOffline} sensors offline`}
+      >
         <span className="stat-value">{sensorsOffline}</span>
         <span className="stat-label">Sensors Offline</span>
       </div>
@@ -40,12 +81,15 @@ type SelectionTarget =
   | { type: 'person'; dotIndex: number; approxLocation: string; stationary: boolean }
   | { type: 'guard'; guardId: string };
 
+type DemoTab = 'lidar' | 'sound' | 'env';
+
 export default function ParkOverview() {
   const {
     selectedPoleId,
     setSelectedPoleId,
     lighting,
     setPoleLight,
+    lightingNote,
     nightMode,
     setNightMode,
     showCoverage,
@@ -53,16 +97,24 @@ export default function ParkOverview() {
     paused,
     setPaused,
     fallPoleId,
+    isLookalikeStop,
     offlinePoleId,
     acousticPoleId,
     blockedRouteZone,
     isRaining,
     resetCounter,
     resetView,
+    latestAudioInference,
+    latestLidarEval,
+    clearLatestResults,
     events,
     triggerSilentFall,
+    triggerStandingStopLookalike,
     triggerScream,
     triggerCombined,
+    triggerUnrelatedSignals,
+    triggerRecordedAudio,
+    triggerLiveMic,
     triggerBenignRain,
     triggerDark,
     triggerUnsafeRoute,
@@ -80,6 +132,108 @@ export default function ParkOverview() {
     type: 'pole',
     poleId: selectedPoleId,
   });
+
+  const [activeTab, setActiveTab] = useState<DemoTab>('lidar');
+  const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
+  const [analyzingSampleId, setAnalyzingSampleId] = useState<string | null>(null);
+  const [isRecordingMic, setIsRecordingMic] = useState<boolean>(false);
+  const [micCountdown, setMicCountdown] = useState<number>(3);
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
+
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play real .wav recording inline from backend
+  const handleTogglePlaySample = (sampleId: string) => {
+    setErrorBanner(null);
+    if (playingSampleId === sampleId && audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
+      setPlayingSampleId(null);
+      return;
+    }
+
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current = null;
+    }
+
+    const url = getAudioSampleFileUrl(sampleId);
+    const audio = new Audio(url);
+    audioPlayerRef.current = audio;
+    setPlayingSampleId(sampleId);
+
+    audio.onended = () => {
+      setPlayingSampleId(null);
+      audioPlayerRef.current = null;
+    };
+    audio.onerror = () => {
+      setPlayingSampleId(null);
+      audioPlayerRef.current = null;
+      setErrorBanner('Could not play audio file. Ensure FastAPI backend is running on port 8000.');
+    };
+
+    audio.play().catch((err: unknown) => {
+      setPlayingSampleId(null);
+      const msg = err instanceof Error ? err.message : 'Playback failed';
+      setErrorBanner(`Audio playback error: ${msg}`);
+    });
+  };
+
+  // Run YAMNet on recorded .wav file (and play audio simultaneously so judge hears it)
+  const handleRunRecordedSample = async (sampleId: string) => {
+    setErrorBanner(null);
+    setAnalyzingSampleId(sampleId);
+    handleTogglePlaySample(sampleId);
+    try {
+      const inf = await triggerRecordedAudio(sampleId);
+      const distressPct = Math.round((inf.distress_score ?? 0) * 100);
+      const benignPct = Math.round((inf.benign_score ?? 0) * 100);
+      setStatusBanner(
+        `RECORDED SAMPLE (${inf.sample_id}): ${inf.plain_label} — Distress: ${distressPct}%, Benign: ${benignPct}%`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Backend connection error';
+      setErrorBanner(`YAMNet analysis error: ${msg}`);
+    } finally {
+      setAnalyzingSampleId(null);
+    }
+  };
+
+  // Capture 3 seconds of live microphone audio as 16kHz PCM WAV and send to YAMNet
+  const handleRecordLiveMic = async () => {
+    setErrorBanner(null);
+    setIsRecordingMic(true);
+    setMicCountdown(3);
+    try {
+      const wavBlob = await recordLiveMicToWavBlob(3, (secLeft) => {
+        setMicCountdown(secLeft);
+      });
+      setIsRecordingMic(false);
+      setAnalyzingSampleId('live_mic');
+      const inf = await triggerLiveMic(wavBlob);
+      const distressPct = Math.round((inf.distress_score ?? 0) * 100);
+      const benignPct = Math.round((inf.benign_score ?? 0) * 100);
+      setStatusBanner(
+        `LIVE MIC INPUT: ${inf.plain_label} — Distress: ${distressPct}%, Benign: ${benignPct}%`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Microphone capture failed';
+      setErrorBanner(`Live Mic Error: ${msg}`);
+    } finally {
+      setIsRecordingMic(false);
+      setAnalyzingSampleId(null);
+    }
+  };
 
   const handleSelectPole = (id: string) => {
     setSelectedPoleId(id);
@@ -109,12 +263,11 @@ export default function ParkOverview() {
     });
   };
 
-  // Selected pole info
-  const selectedPole       = POLES.find(p => p.id === selectedPoleId);
+  const selectedPole = POLES.find((p) => p.id === selectedPoleId);
   const selectedBrightness = lighting[selectedPoleId] ?? 70;
-  const isSelectedOffline  = offlinePoleId === selectedPoleId;
-  const isSelectedAlert    = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId;
-  const isDark             = !isSelectedOffline && selectedBrightness < 30;
+  const isSelectedOffline = offlinePoleId === selectedPoleId;
+  const isSelectedAlert = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId;
+  const isDark = !isSelectedOffline && selectedBrightness < 30;
 
   return (
     <div className="park-overview">
@@ -133,7 +286,6 @@ export default function ParkOverview() {
 
       {/* Main workspace */}
       <div className="workspace">
-
         {/* ── 3D Viewer ── */}
         <div className="viewer">
           {/* Controls overlay (top-left) */}
@@ -142,7 +294,7 @@ export default function ParkOverview() {
               <input
                 type="checkbox"
                 checked={nightMode}
-                onChange={e => setNightMode(e.target.checked)}
+                onChange={(e) => setNightMode(e.target.checked)}
                 id="night-mode-toggle"
               />
               Night mode
@@ -151,7 +303,7 @@ export default function ParkOverview() {
               <input
                 type="checkbox"
                 checked={showCoverage}
-                onChange={e => setShowCoverage(e.target.checked)}
+                onChange={(e) => setShowCoverage(e.target.checked)}
                 id="coverage-toggle"
               />
               Show coverage&nbsp;
@@ -161,7 +313,7 @@ export default function ParkOverview() {
               <input
                 type="checkbox"
                 checked={paused}
-                onChange={e => setPaused(e.target.checked)}
+                onChange={(e) => setPaused(e.target.checked)}
                 id="pause-toggle"
               />
               Pause motion
@@ -170,14 +322,70 @@ export default function ParkOverview() {
 
           {/* Reset View (top-right) */}
           <div className="viewer-controls-right">
-            <button
-              id="reset-view-btn"
-              className="btn btn-ghost btn-sm"
-              onClick={resetView}
-            >
+            <button id="reset-view-btn" className="btn btn-ghost btn-sm" onClick={resetView}>
               ↺ Reset View
             </button>
           </div>
+
+          {/* Emergency Lighting Response Banner */}
+          {lightingNote && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '52px',
+                left: '14px',
+                right: '14px',
+                zIndex: 10,
+                padding: '8px 14px',
+                background: 'rgba(245, 158, 11, 0.18)',
+                border: '1px solid rgba(251, 191, 36, 0.5)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#fde68a',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backdropFilter: 'blur(6px)',
+              }}
+            >
+              <span style={{ fontSize: '16px' }}>💡</span>
+              <span>
+                <strong>Safety Lighting Response:</strong> {lightingNote}
+              </span>
+            </div>
+          )}
+
+          {/* Status Feedback Banner */}
+          {statusBanner && (
+            <div
+              style={{
+                position: 'absolute',
+                top: lightingNote ? '96px' : '52px',
+                left: '14px',
+                right: '14px',
+                zIndex: 10,
+                padding: '8px 14px',
+                background: 'rgba(15, 23, 42, 0.88)',
+                border: '1px solid rgba(45, 184, 176, 0.55)',
+                borderRadius: '8px',
+                fontSize: '13px',
+                color: '#5eead4',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backdropFilter: 'blur(6px)',
+              }}
+            >
+              <span>{statusBanner}</span>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '0 6px', fontSize: '11px', minHeight: 'unset' }}
+                onClick={() => setStatusBanner(null)}
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Canvas */}
           <div className="canvas-wrap">
@@ -187,10 +395,12 @@ export default function ParkOverview() {
               onSelectAnonymousDot={handleSelectAnonymousDot}
               onSelectGuard={handleSelectGuard}
               lighting={lighting}
+              lightingNote={lightingNote}
               showCoverage={showCoverage}
               paused={paused}
               nightMode={nightMode}
               fallPoleId={fallPoleId}
+              isLookalikeStop={isLookalikeStop}
               offlinePoleId={offlinePoleId}
               acousticPoleId={acousticPoleId}
               blockedRouteZone={blockedRouteZone}
@@ -204,7 +414,7 @@ export default function ParkOverview() {
             </span>
           </div>
 
-          {/* Legend per requirements */}
+          {/* Legend */}
           <div className="viewer-legend" role="list" aria-label="Map legend">
             <div className="legend-item" role="listitem">
               <span className="legend-dot teal" aria-hidden="true" />
@@ -238,12 +448,10 @@ export default function ParkOverview() {
 
         {/* ── Right Sidebar ── */}
         <aside className="sidebar" aria-label="Park details panel">
-
-          {/* Selected area with clear provenance */}
+          {/* 1. Selected Area Panel */}
           <div className="panel">
             <h2 className="panel-title">Selected Area</h2>
 
-            {/* Quick Entity Switcher */}
             <div className="entity-switch-row" role="tablist" aria-label="Selection entity">
               <button
                 className={`entity-switch-btn ${selection.type === 'pole' ? 'active' : ''}`}
@@ -273,24 +481,36 @@ export default function ParkOverview() {
               )}
             </div>
 
-            {/* ── State 1: Sensor Pole Selected ── */}
             {selection.type === 'pole' && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px',
+                  }}
+                >
                   <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Smart Infrastructure</span>
-                  <span className="badge badge-simulated" style={{ fontSize: '10px' }}>Simulated Telemetry</span>
+                  <span className="badge badge-simulated" style={{ fontSize: '10px' }}>
+                    Simulated Telemetry
+                  </span>
                 </div>
 
                 <div className="form-group mb-2">
-                  <label className="form-label" htmlFor="pole-select">Select Sensor Pole</label>
+                  <label className="form-label" htmlFor="pole-select">
+                    Select Sensor Pole
+                  </label>
                   <select
                     id="pole-select"
                     className="form-control"
                     value={selectedPoleId}
-                    onChange={e => handleSelectPole(e.target.value)}
+                    onChange={(e) => handleSelectPole(e.target.value)}
                   >
-                    {POLES.map(p => (
-                      <option key={p.id} value={p.id}>{p.id} · {p.name}</option>
+                    {POLES.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.id} · {p.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -314,7 +534,13 @@ export default function ParkOverview() {
                     <div className="metric-row">
                       <span className="metric-label">Lighting</span>
                       <span className={`metric-value ${isDark || isSelectedOffline ? 'warn' : 'ok'}`}>
-                        {isSelectedOffline ? 'Offline' : isDark ? 'Review needed' : 'Normal (demo)'}
+                        {isSelectedOffline
+                          ? 'Offline'
+                          : isDark
+                          ? 'Low Lighting Warning'
+                          : selectedBrightness >= 95 && isSelectedAlert
+                          ? 'Nearby Lights On (100%)'
+                          : 'Normal (demo)'}
                       </span>
                     </div>
                     {isSelectedAlert && (
@@ -335,7 +561,7 @@ export default function ParkOverview() {
                           min={0}
                           max={100}
                           value={selectedBrightness}
-                          onChange={e => setPoleLight(selectedPoleId, Number(e.target.value))}
+                          onChange={(e) => setPoleLight(selectedPoleId, Number(e.target.value))}
                           aria-label="Virtual light brightness"
                         />
                       </div>
@@ -356,54 +582,68 @@ export default function ParkOverview() {
               </>
             )}
 
-            {/* ── State 2: Anonymous Person (LiDAR) Selected ── */}
             {selection.type === 'person' && (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '10px',
+                  }}
+                >
+                  <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
                     Person Detected
                   </h3>
-                  <span className="badge badge-teal" style={{ fontSize: '10px' }}>Simulated LiDAR</span>
+                  <span className="badge badge-teal" style={{ fontSize: '10px' }}>
+                    Simulated LiDAR
+                  </span>
                 </div>
 
                 <div className="metric-row">
                   <span className="metric-label">Detection Type</span>
-                  <span className="metric-value">Anonymous Point Cluster</span>
+                  <span className="metric-value">Anonymous 3D Point Cluster</span>
                 </div>
                 <div className="metric-row">
                   <span className="metric-label">Approx. Location</span>
                   <span className="metric-value">{selection.approxLocation}</span>
                 </div>
                 <div className="metric-row">
-                  <span className="metric-label">Motion Telemetry</span>
-                  <span className={`metric-value ${selection.stationary ? 'warn' : 'ok'}`}>
-                    {selection.stationary ? 'Stationary (Possible Fall Anomaly)' : 'Moving along pathway'}
+                  <span className="metric-label">3D Cluster Height</span>
+                  <span className={`metric-value ${fallPoleId === 'AS-104' ? 'warn' : 'ok'}`}>
+                    {fallPoleId === 'AS-104'
+                      ? '0.34m (Collapsed to Ground)'
+                      : '1.72m (Standing Upright)'}
+                  </span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Motion Status</span>
+                  <span className={`metric-value ${fallPoleId === 'AS-104' ? 'warn' : 'ok'}`}>
+                    {fallPoleId === 'AS-104'
+                      ? 'Unusual Movement (Motionless 45s)'
+                      : isLookalikeStop
+                      ? 'Stopped Upright (No Alert)'
+                      : 'Walking along pathway'}
                   </span>
                 </div>
                 <div className="metric-row">
                   <span className="metric-label">Identity Data</span>
-                  <span className="metric-value" style={{ color: 'var(--text-muted)' }}>None (Protected by design)</span>
+                  <span className="metric-value" style={{ color: 'var(--text-muted)' }}>
+                    None (Protected by design)
+                  </span>
                 </div>
 
                 <div className="notice notice-info mt-2" style={{ fontSize: '12px' }}>
-                  <strong>LiDAR Privacy Guarantee:</strong> Detected strictly via geometric depth points. LiDAR cannot identify or classify whether this person is a resident or security guard. No facial features, identity, names, or movement histories exist or are stored.
+                  <strong>LiDAR Privacy Safeguard:</strong> Anonymous 3D bounding-box geometry only. No facial recognition, identity, or continuous movement history is stored.
                 </div>
-
-                <button
-                  className="btn btn-ghost btn-sm btn-full mt-2"
-                  onClick={() => setSelection({ type: 'pole', poleId: selectedPoleId })}
-                >
-                  ← Return to Sensor Pole ({selectedPoleId})
-                </button>
               </>
             )}
 
-            {/* ── State 3: Security Guard Selected ── */}
             {selection.type === 'guard' && (
               <>
                 {(() => {
-                  const activeDispatched = dispatchedGuards.find(g => g.guardId === selection.guardId);
-                  const guardInfo = guards.find(g => g.id === selection.guardId);
+                  const activeDispatched = dispatchedGuards.find((g) => g.guardId === selection.guardId);
+                  const guardInfo = guards.find((g) => g.id === selection.guardId);
                   const officerName = activeDispatched?.guardName || guardInfo?.displayName || 'Officer';
                   const officerRole = guardInfo?.role || 'Security Guard';
                   const statusText = activeDispatched
@@ -416,20 +656,26 @@ export default function ParkOverview() {
 
                   return (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '10px',
+                        }}
+                      >
+                        <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
                           Security Guard
                         </h3>
-                        <span className="badge badge-blue" style={{ fontSize: '10px' }}>Guard Location (Simulated)</span>
+                        <span className="badge badge-blue" style={{ fontSize: '10px' }}>
+                          Guard Location (Simulated)
+                        </span>
                       </div>
-
                       <div className="metric-row">
                         <span className="metric-label">Officer</span>
-                        <span className="metric-value" style={{ color: '#38bdf8', fontWeight: 700 }}>{officerName}</span>
-                      </div>
-                      <div className="metric-row">
-                        <span className="metric-label">Guard ID</span>
-                        <span className="metric-value">{selection.guardId}</span>
+                        <span className="metric-value" style={{ color: '#38bdf8', fontWeight: 700 }}>
+                          {officerName}
+                        </span>
                       </div>
                       <div className="metric-row">
                         <span className="metric-label">Role</span>
@@ -439,23 +685,6 @@ export default function ParkOverview() {
                         <span className="metric-label">Patrol Status</span>
                         <span className="metric-value ok">{statusText}</span>
                       </div>
-                      <div className="metric-row">
-                        <span className="metric-label">Reported Location</span>
-                        <span className="metric-value">
-                          {activeDispatched?.targetPoleId ? `Near ${activeDispatched.targetPoleId}` : 'Security Station (Entrance)'}
-                        </span>
-                      </div>
-
-                      <div className="notice notice-info mt-2" style={{ fontSize: '12px', borderLeftColor: '#38bdf8' }}>
-                        <strong>Separate Guard Telemetry:</strong> Position reported from the officer's simulated GPS / two-way security radio beacon. This location is independent of anonymous LiDAR detections.
-                      </div>
-
-                      <button
-                        className="btn btn-ghost btn-sm btn-full mt-2"
-                        onClick={() => setSelection({ type: 'pole', poleId: selectedPoleId })}
-                      >
-                        ← Return to Sensor Pole ({selectedPoleId})
-                      </button>
                     </>
                   );
                 })()}
@@ -463,118 +692,473 @@ export default function ParkOverview() {
             )}
           </div>
 
-          {/* Demo scenarios — Categorized per Phase 2b */}
+          {/* 2. Guided 3-Tab Demo Controls Panel */}
           <div className="panel">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <h2 className="panel-title" style={{ margin: 0 }}>Demo Scenarios</h2>
-              <span className="badge badge-simulated" style={{ fontSize: '10px' }}>Phase 2b</span>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '8px',
+              }}
+            >
+              <h2 className="panel-title" style={{ margin: 0 }}>
+                Interactive Demo Controls
+              </h2>
+              <button
+                id="demo-reset-btn"
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: '11px', padding: '2px 8px', minHeight: '28px' }}
+                onClick={() => {
+                  handleReset();
+                  clearLatestResults();
+                  setStatusBanner(null);
+                  setErrorBanner(null);
+                }}
+              >
+                ↺ Reset All
+              </button>
             </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.4 }}>
-              Categorized simulation triggers. All signals labeled simulated/recorded.
-            </p>
 
-            <div className="scenario-section">
-              {/* 1. Emergency Scenarios */}
-              <div className="scenario-category">
-                <div className="scenario-category-title">
-                  <span>🚨 Emergency Signals</span>
-                </div>
+            {/* 3-Tab Switcher */}
+            <div
+              className="entity-switch-row"
+              role="tablist"
+              aria-label="Demo scenario categories"
+              style={{ marginBottom: '10px' }}
+            >
+              <button
+                type="button"
+                className={`entity-switch-btn ${activeTab === 'lidar' ? 'active' : ''}`}
+                onClick={() => setActiveTab('lidar')}
+                role="tab"
+                aria-selected={activeTab === 'lidar'}
+              >
+                🧍 1. LiDAR Fall AI
+              </button>
+              <button
+                type="button"
+                className={`entity-switch-btn ${activeTab === 'sound' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sound')}
+                role="tab"
+                aria-selected={activeTab === 'sound'}
+              >
+                🔊 2. Sound AI
+              </button>
+              <button
+                type="button"
+                className={`entity-switch-btn ${activeTab === 'env' ? 'active' : ''}`}
+                onClick={() => setActiveTab('env')}
+                role="tab"
+                aria-selected={activeTab === 'env'}
+              >
+                🌲 3. Park &amp; Lights
+              </button>
+            </div>
+
+            {errorBanner && (
+              <div
+                className="notice notice-warning"
+                style={{ marginBottom: '10px', fontSize: '12px', color: '#fca5a5', borderColor: '#ef4444' }}
+              >
+                {errorBanner}
+              </div>
+            )}
+
+            {/* ── TAB 1: LiDAR Fall vs. Lookalike Immunity ── */}
+            {activeTab === 'lidar' && (
+              <div className="scenario-section">
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
+                  Compare a person stopping upright on West Loop (<strong>AS-104</strong>) vs. collapsing to the ground.
+                </p>
+
+                <button
+                  id="demo-standing-stop-btn"
+                  className="scenario-btn"
+                  onClick={async () => {
+                    const res = await triggerStandingStopLookalike();
+                    setSelection({
+                      type: 'person',
+                      dotIndex: 0,
+                      approxLocation: 'West Loop · Near Pole AS-104',
+                      stationary: false,
+                    });
+                    setStatusBanner(`LiDAR Lookalike Test: ${res.plain_label} — Height stays 1.72m upright.`);
+                  }}
+                >
+                  <span>1. Person Stops Upright (AS-104)</span>
+                  <span className="scenario-pill pill-norm">No Alert</span>
+                </button>
+
                 <button
                   id="demo-silent-fall-btn"
                   className="scenario-btn"
-                  onClick={triggerSilentFall}
-                  disabled={fallPoleId === 'AS-104' && !acousticPoleId}
+                  onClick={async () => {
+                    const res = await triggerSilentFall();
+                    setSelection({
+                      type: 'person',
+                      dotIndex: 0,
+                      approxLocation: 'West Loop · Near Pole AS-104',
+                      stationary: true,
+                    });
+                    setStatusBanner(
+                      `Silent Fall Detected: Height dropped 1.72m → 0.34m. AS-104 light boosted to 100% (${res.plain_label}).`,
+                    );
+                  }}
                 >
-                  <span>Silent Fall (AS-104)</span>
-                  <span className="scenario-pill pill-review">Review</span>
+                  <span>2. Silent Fall Collapse (AS-104 + 100% Light)</span>
+                  <span className="scenario-pill pill-review">Needs Review</span>
                 </button>
-                <button
-                  id="demo-scream-btn"
-                  className="scenario-btn"
-                  onClick={triggerScream}
-                  disabled={acousticPoleId === 'AS-101'}
-                >
-                  <span>Distress Scream (AS-101)</span>
-                  <span className="scenario-pill pill-review">Review</span>
-                </button>
+
                 <button
                   id="demo-combined-btn"
                   className="scenario-btn"
-                  onClick={triggerCombined}
-                  disabled={fallPoleId === 'AS-104' && acousticPoleId === 'AS-104'}
+                  onClick={async () => {
+                    await triggerCombined();
+                    setStatusBanner(
+                      'Signals Agree (Urgent): Distress sound + LiDAR fall in West Loop within 15s window.',
+                    );
+                  }}
                 >
-                  <span>Combined Event (AS-104)</span>
+                  <span>3. Signals Agree: Fall + Scream (Same Zone)</span>
                   <span className="scenario-pill pill-urgent">Urgent</span>
                 </button>
-              </div>
 
-              {/* 2. Environmental & Infrastructure */}
-              <div className="scenario-category">
-                <div className="scenario-category-title">
-                  <span>⚠️ Environment &amp; Sensors</span>
+                <button
+                  id="demo-unrelated-signals-btn"
+                  className="scenario-btn"
+                  onClick={async () => {
+                    await triggerUnrelatedSignals();
+                    setStatusBanner(
+                      'Different Zones: Scream at North Entrance (AS-101) + Fall at West Loop (AS-104) kept as 2 separate cases.',
+                    );
+                  }}
+                >
+                  <span>4. Separate Zones Test (AS-101 vs AS-104)</span>
+                  <span className="scenario-pill pill-cov">2 Separate Cases</span>
+                </button>
+
+                {/* Live LiDAR Kinematic Readout Card */}
+                {latestLidarEval && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px 12px',
+                      background: 'rgba(15, 23, 42, 0.65)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <strong style={{ color: 'var(--text-primary)' }}>LiDAR 3D Cluster Readout</strong>
+                      <span className="badge badge-simulated" style={{ fontSize: '9px' }}>
+                        SIMULATED
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Result</span>
+                      <span
+                        className={`metric-value ${
+                          latestLidarEval.trigger_incident ? 'warn' : 'ok'
+                        }`}
+                      >
+                        {latestLidarEval.plain_label}
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Height Change</span>
+                      <span className="metric-value">
+                        {latestLidarEval.kinematics.initial_height_m}m →{' '}
+                        {latestLidarEval.kinematics.final_height_m}m
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Vertical Drop Speed</span>
+                      <span className="metric-value">
+                        {latestLidarEval.kinematics.drop_speed_mps} m/s
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Lighting Action</span>
+                      <span className="metric-value" style={{ fontSize: '11px' }}>
+                        {latestLidarEval.lighting_note}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── TAB 2: Sound AI (YAMNet Recorded WAV & Live Mic) ── */}
+            {activeTab === 'sound' && (
+              <div className="scenario-section">
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
+                  Click <strong>▶ Listen</strong> to hear the real WAV clip, or <strong>Analyze</strong> to run YAMNet.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {BENCHMARK_SAMPLES.map((sample) => {
+                    const isPlaying = playingSampleId === sample.id;
+                    const isAnalyzing = analyzingSampleId === sample.id;
+                    return (
+                      <div
+                        key={sample.id}
+                        style={{
+                          padding: '8px 10px',
+                          background: 'var(--bg-elevated)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(148, 163, 184, 0.14)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+                            {sample.title}
+                          </strong>
+                          <span className={`scenario-pill ${sample.badgeClass}`}>
+                            {sample.badgeText}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: 'var(--text-muted)',
+                            marginBottom: '6px',
+                          }}
+                        >
+                          {sample.desc}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: '11px', padding: '4px 10px', minHeight: '30px' }}
+                            onClick={() => handleTogglePlaySample(sample.id)}
+                          >
+                            {isPlaying ? '⏹ Stop' : '▶ Listen'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            style={{
+                              fontSize: '11px',
+                              padding: '4px 10px',
+                              minHeight: '30px',
+                              flex: 1,
+                            }}
+                            onClick={() => handleRunRecordedSample(sample.id)}
+                            disabled={isAnalyzing}
+                          >
+                            {isAnalyzing ? 'Analyzing WAV…' : '⚡ Analyze with YAMNet'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* 3-Second Live Microphone Recording Button */}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm btn-full"
+                    style={{
+                      marginTop: '2px',
+                      minHeight: '38px',
+                      fontWeight: 600,
+                      borderColor: isRecordingMic ? 'var(--urgent)' : 'var(--accent)',
+                      color: isRecordingMic ? '#fca5a5' : 'var(--text-primary)',
+                    }}
+                    onClick={handleRecordLiveMic}
+                    disabled={isRecordingMic || analyzingSampleId === 'live_mic'}
+                  >
+                    {isRecordingMic
+                      ? `🔴 Recording Microphone (${micCountdown}s)… Speak or Scream!`
+                      : analyzingSampleId === 'live_mic'
+                      ? 'Processing 16kHz WAV in YAMNet…'
+                      : '🎤 Test Live Microphone (3s Recording)'}
+                  </button>
                 </div>
+
+                {/* YAMNet Audio Assessment Result Box */}
+                {latestAudioInference && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px 12px',
+                      background: 'rgba(15, 23, 42, 0.72)',
+                      border: '1px solid rgba(45, 184, 176, 0.4)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <strong style={{ color: 'var(--text-primary)' }}>YAMNet Audio Result</strong>
+                      <span
+                        className={
+                          latestAudioInference.source_mode === 'live'
+                            ? 'badge badge-live'
+                            : 'badge badge-recorded'
+                        }
+                        style={{ fontSize: '9px' }}
+                      >
+                        {latestAudioInference.source_mode === 'live'
+                          ? 'LIVE INPUT'
+                          : 'RECORDED SAMPLE'}
+                      </span>
+                    </div>
+
+                    <div className="metric-row">
+                      <span className="metric-label">Classification</span>
+                      <span
+                        className={`metric-value ${
+                          latestAudioInference.event_type === 'possible_scream' ? 'warn' : 'ok'
+                        }`}
+                      >
+                        {latestAudioInference.plain_label}
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Distress Score</span>
+                      <span className="metric-value" style={{ fontWeight: 700 }}>
+                        {Math.round((latestAudioInference.distress_score ?? 0) * 100)}%
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Benign Score</span>
+                      <span className="metric-value">
+                        {Math.round((latestAudioInference.benign_score ?? 0) * 100)}%
+                      </span>
+                    </div>
+
+                    {latestAudioInference.top_classes && latestAudioInference.top_classes.length > 0 && (
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <strong>Top AudioSet Classes:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                          {latestAudioInference.top_classes.map((c, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: 'rgba(255,255,255,0.07)',
+                                fontSize: '11px',
+                              }}
+                            >
+                              {c.class_name}: {Math.round((c.score ?? 0) * 100)}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── TAB 3: Park Environment & Lighting ── */}
+            {activeTab === 'env' && (
+              <div className="scenario-section">
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
+                  Simulate low pathway lighting, offline sensor heartbeats, and blocked routes.
+                </p>
+
                 <button
                   id="demo-dark-btn"
                   className="scenario-btn"
-                  onClick={triggerDark}
+                  onClick={() => {
+                    triggerDark();
+                    setStatusBanner('Low Lighting Warning: Lakeside Path (AS-102) virtual brightness dropped to 0%.');
+                  }}
                   disabled={(lighting['AS-102'] ?? 70) < 30}
                 >
-                  <span>Dark Pathway (AS-102)</span>
-                  <span className="scenario-pill pill-warn">Lighting</span>
+                  <span>Dark Pathway (AS-102 · 0% Light)</span>
+                  <span className="scenario-pill pill-warn">Low Light</span>
                 </button>
+
                 <button
                   id="demo-offline-btn"
                   className="scenario-btn"
-                  onClick={triggerOffline}
+                  onClick={() => {
+                    triggerOffline();
+                    setStatusBanner('Coverage Warning: AS-103 missed 3 heartbeats. Area monitoring unavailable.');
+                  }}
                   disabled={offlinePoleId === 'AS-103'}
                 >
-                  <span>Sensor Offline (AS-103)</span>
-                  <span className="scenario-pill pill-cov">Coverage</span>
+                  <span>Sensor Offline (AS-103 Heartbeat Lost)</span>
+                  <span className="scenario-pill pill-cov">Offline</span>
                 </button>
+
                 <button
                   id="demo-unsafe-route-btn"
                   className="scenario-btn"
-                  onClick={triggerUnsafeRoute}
+                  onClick={() => {
+                    triggerUnsafeRoute();
+                    setStatusBanner(
+                      blockedRouteZone === 'central_path'
+                        ? 'Central Path reopened.'
+                        : 'Central Path Blocked: Emergency lighting will display "route not verified".',
+                    );
+                  }}
                 >
-                  <span>{blockedRouteZone === 'central_path' ? 'Reopen Central Path' : 'Block Central Path'}</span>
+                  <span>
+                    {blockedRouteZone === 'central_path'
+                      ? 'Reopen Central Path'
+                      : 'Block Central Path (Obstruction)'}
+                  </span>
                   <span className="scenario-pill pill-cov">
                     {blockedRouteZone === 'central_path' ? 'Open' : 'Blocked'}
                   </span>
                 </button>
-              </div>
 
-              {/* 3. Benign Telemetry */}
-              <div className="scenario-category">
-                <div className="scenario-category-title">
-                  <span>🌿 Benign Telemetry</span>
-                </div>
                 <button
                   id="demo-rain-btn"
                   className="scenario-btn"
                   onClick={triggerBenignRain}
                 >
-                  <span>{isRaining ? 'Stop Rain Simulation' : 'Benign Rain Acoustic'}</span>
+                  <span>{isRaining ? 'Stop Rain Visuals' : 'Toggle Rain Visuals (Benign)'}</span>
                   <span className="scenario-pill pill-norm">{isRaining ? 'Active' : 'Normal'}</span>
                 </button>
-              </div>
 
-              {/* Reset button */}
-              <button
-                id="demo-reset-btn"
-                className="btn btn-ghost btn-sm btn-full"
-                onClick={handleReset}
-                style={{ marginTop: '4px' }}
-              >
-                ↺ Reset All Scenarios
-              </button>
-            </div>
+                <button
+                  id="demo-scream-btn"
+                  className="scenario-btn"
+                  onClick={() => {
+                    triggerScream();
+                    setStatusBanner('Simulated Scream (AS-101): Synthetic alert injected (labeled SIMULATED).');
+                  }}
+                >
+                  <span>Quick Simulated Scream (AS-101)</span>
+                  <span className="scenario-pill pill-review">Simulated</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Alert feed */}
+          {/* 3. Recent Alerts Feed */}
           <div className="panel" style={{ flex: 1, overflowY: 'auto' }}>
             <h2 className="panel-title">Recent Alerts</h2>
             <div className="feed" role="list" aria-live="polite" aria-label="Recent alerts">
-              {events.map(e => (
+              {events.map((e) => (
                 <AlertCard key={e.id} event={e} />
               ))}
             </div>
