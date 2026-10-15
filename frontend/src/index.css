@@ -1187,3 +1187,30 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
   line-height: 1.35;
 }
 
+/* Package A4: Full-width 2-column incident dossier layout */
+.incident-detail-content {
+  max-width: 100% !important;
+  width: 100%;
+}
+
+.incident-dossier-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.incident-dossier-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 1120px) {
+  .incident-dossier-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+

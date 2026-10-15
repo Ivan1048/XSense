@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePark } from '../context/ParkContext';
 import StatusLabel from '../components/StatusLabel';
-import type { IncidentStatus, AlertLevel } from '../types';
 
 export default function Incidents() {
   const {
@@ -31,8 +30,18 @@ export default function Incidents() {
     'Closed',
   ];
 
-  // Filter logic
-  const filteredIncidents = incidents.filter(inc => {
+  // Keep selectedGuardToAssign pointed at an available guard when possible
+  useEffect(() => {
+    const current = guards.find((g) => g.id === selectedGuardToAssign);
+    if (!current || current.availability === 'busy') {
+      const nextAvailable = guards.find((g) => g.availability === 'available');
+      if (nextAvailable) {
+        setSelectedGuardToAssign(nextAvailable.id);
+      }
+    }
+  }, [guards, selectedGuardToAssign]);
+
+  const filteredIncidents = incidents.filter((inc) => {
     if (activeFilter === 'All') return true;
     if (activeFilter === 'Needs Review') {
       return inc.priority === 'needs_review' || inc.status === 'open';
@@ -49,8 +58,15 @@ export default function Incidents() {
     return true;
   });
 
-  const selectedIncident = incidents.find(i => i.id === selectedIncidentId) || filteredIncidents[0] || null;
-  const assignedGuard = guards.find(g => g.id === selectedIncident?.assignedGuardId);
+  const selectedIncident =
+    incidents.find((i) => i.id === selectedIncidentId) || filteredIncidents[0] || null;
+  const assignedGuard = guards.find((g) => g.id === selectedIncident?.assignedGuardId);
+  const availableGuardsCount = guards.filter((g) => g.availability === 'available').length;
+  const selectedCandidateGuard = guards.find((g) => g.id === selectedGuardToAssign);
+  const canDispatchCandidate =
+    Boolean(selectedCandidateGuard) &&
+    selectedCandidateGuard?.availability === 'available' &&
+    !selectedIncident?.assignedGuardId;
 
   const handleResolveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,26 +84,34 @@ export default function Incidents() {
     setShowFalseAlarmForm(false);
   };
 
-  const isClosed = selectedIncident?.status === 'resolved' || selectedIncident?.status === 'false_alarm';
+  const isClosed =
+    selectedIncident?.status === 'resolved' || selectedIncident?.status === 'false_alarm';
 
   return (
     <div className="incidents-page">
       {/* Header bar */}
       <div className="incidents-header">
-        <h1>Incidents</h1>
-        <div className="filter-tabs" role="tablist" aria-label="Filter incidents">
-          {FILTERS.map(f => (
-            <button
-              key={f}
-              className={`filter-tab${activeFilter === f ? ' active' : ''}`}
-              role="tab"
-              aria-selected={activeFilter === f}
-              id={`filter-${f.toLowerCase().replace(' ', '-')}`}
-              onClick={() => setActiveFilter(f)}
-            >
-              {f}
-            </button>
-          ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h1 style={{ marginBottom: '4px' }}>Incidents</h1>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>
+              Review possible distress alerts, inspect sensor &amp; camera context, dispatch guards, and record outcomes.
+            </p>
+          </div>
+          <div className="filter-tabs" role="tablist" aria-label="Filter incidents">
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                className={`filter-tab${activeFilter === f ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeFilter === f}
+                id={`filter-${f.toLowerCase().replace(' ', '-')}`}
+                onClick={() => setActiveFilter(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -97,7 +121,9 @@ export default function Incidents() {
         <div className="incidents-list" role="list" aria-label="Incident alerts list">
           {filteredIncidents.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-state-icon" aria-hidden="true">✓</div>
+              <div className="empty-state-icon" aria-hidden="true">
+                ✓
+              </div>
               <h3>No active alerts</h3>
               <p>
                 {activeFilter === 'All'
@@ -106,8 +132,9 @@ export default function Incidents() {
               </p>
             </div>
           ) : (
-            filteredIncidents.map(inc => {
+            filteredIncidents.map((inc) => {
               const isSelected = selectedIncident?.id === inc.id;
+              const count = inc.occurrenceCount ?? 1;
               return (
                 <article
                   key={inc.id}
@@ -115,7 +142,7 @@ export default function Incidents() {
                   role="listitem"
                   tabIndex={0}
                   onClick={() => setSelectedIncidentId(inc.id)}
-                  onKeyDown={e => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       setSelectedIncidentId(inc.id);
@@ -124,7 +151,25 @@ export default function Incidents() {
                   aria-label={`${inc.displayType} at ${inc.zoneName}`}
                 >
                   <div className="incident-card-header">
-                    <span className="incident-card-title">{inc.displayType}</span>
+                    <span className="incident-card-title">
+                      {inc.displayType}
+                      {count > 1 && (
+                        <span
+                          style={{
+                            marginLeft: '6px',
+                            padding: '1px 6px',
+                            borderRadius: '999px',
+                            fontSize: '11px',
+                            background: 'rgba(45, 184, 176, 0.18)',
+                            color: 'var(--accent)',
+                            border: '1px solid rgba(45, 184, 176, 0.35)',
+                          }}
+                          title="Merged duplicate sensor detections within 30s window"
+                        >
+                          ×{count}
+                        </span>
+                      )}
+                    </span>
                     <span className="incident-card-time">{inc.createdAt}</span>
                   </div>
                   <div className="incident-card-location">
@@ -141,229 +186,355 @@ export default function Incidents() {
           )}
         </div>
 
-        {/* Right column: Incident Detail Panel */}
+        {/* Right column: Full-Width 2-Column Incident Dossier */}
         <div className="incident-detail-panel" aria-label="Incident details">
           {!selectedIncident ? (
             <div className="empty-state">
-              <div className="empty-state-icon" aria-hidden="true">📋</div>
+              <div className="empty-state-icon" aria-hidden="true">
+                📋
+              </div>
               <h3>No incident selected</h3>
-              <p>Select an incident from the list to view telemetry details, assign guards, and record outcomes.</p>
+              <p>
+                Select an incident from the list to view telemetry details, assign guards, and record outcomes.
+              </p>
             </div>
           ) : (
             <div className="incident-detail-content">
-              {/* Header Info Card */}
-              <section className="detail-header-card">
-                <div className="detail-title-row">
-                  <div>
-                    <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                      ID: {selectedIncident.id}
-                    </span>
-                    <h2>{selectedIncident.displayType}</h2>
-                  </div>
-                  <div className="detail-badges">
-                    <StatusLabel level={selectedIncident.priority} />
-                    <StatusLabel level={selectedIncident.status} />
-                    <StatusLabel level={selectedIncident.sourceMode} />
-                  </div>
-                </div>
-
-                <div className="detail-reason-box">
-                  <strong>Detection Note:</strong> {selectedIncident.reason}
-                </div>
-
-                <div className="detail-grid">
-                  <div>
-                    <div className="detail-item-label">Location Area</div>
-                    <div className="detail-item-value">{selectedIncident.zoneName}</div>
-                  </div>
-                  <div>
-                    <div className="detail-item-label">Sensor / Pole</div>
-                    <div className="detail-item-value">{selectedIncident.poleId}</div>
-                  </div>
-                  <div>
-                    <div className="detail-item-label">Time Logged</div>
-                    <div className="detail-item-value">{selectedIncident.createdAt}</div>
-                  </div>
-                  <div>
-                    <div className="detail-item-label">Assigned Guard</div>
-                    <div className="detail-item-value" style={{ color: assignedGuard ? 'var(--accent)' : 'var(--text-muted)' }}>
-                      {assignedGuard ? `${assignedGuard.displayName} (${assignedGuard.role})` : 'Unassigned'}
-                    </div>
-                  </div>
-                  {selectedIncident.score !== undefined && (
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <div className="detail-item-label">Detection Confidence</div>
-                      <div className="detail-item-value" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span>{(selectedIncident.score * 100).toFixed(0)}%</span>
-                        <span style={{ fontSize: '12px', fontWeight: 'normal', color: 'var(--text-muted)' }}>
-                          Model anomaly score only — does not prove certified emergency per safety rules.
+              <div className="incident-dossier-grid">
+                {/* ── Left Dossier Column: Summary + Guard Actions ── */}
+                <div className="incident-dossier-col">
+                  {/* Header Info Card */}
+                  <section className="detail-header-card">
+                    <div className="detail-title-row">
+                      <div>
+                        <span
+                          style={{
+                            fontSize: '13px',
+                            color: 'var(--text-muted)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          ID: {selectedIncident.id}
+                          {(selectedIncident.occurrenceCount ?? 1) > 1
+                            ? ` · Merged (${selectedIncident.occurrenceCount} signals in 30s)`
+                            : ''}
                         </span>
+                        <h2>{selectedIncident.displayType}</h2>
+                      </div>
+                      <div className="detail-badges">
+                        <StatusLabel level={selectedIncident.priority} />
+                        <StatusLabel level={selectedIncident.status} />
+                        <StatusLabel level={selectedIncident.sourceMode} />
                       </div>
                     </div>
-                  )}
-                </div>
-              </section>
 
-              {/* Action Controls Card */}
-              <section className="detail-actions-card">
-                <h3>Guard Response Actions</h3>
-
-                {isClosed ? (
-                  <div className="notice notice-ok">
-                    This incident has been closed ({selectedIncident.status === 'resolved' ? 'Resolved' : 'False Alarm'}).
-                    No further immediate action required.
-                  </div>
-                ) : (
-                  <>
-                    <div className="actions-toolbar">
-                      {selectedIncident.status === 'open' && (
-                        <button
-                          id="btn-acknowledge"
-                          className="btn btn-primary"
-                          onClick={() => acknowledgeIncident(selectedIncident.id)}
-                        >
-                          ✓ Acknowledge Incident
-                        </button>
-                      )}
-
-                      {selectedIncident.status === 'assigned' && (
-                        <button
-                          id="btn-mark-arrived"
-                          className="btn btn-primary"
-                          onClick={() => markArrived(selectedIncident.id)}
-                        >
-                          📍 Mark Arrived on Scene
-                        </button>
-                      )}
-
-                      <button
-                        id="btn-toggle-resolve"
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          setShowResolveForm(prev => !prev);
-                          setShowFalseAlarmForm(false);
-                        }}
-                      >
-                        ✓ Resolve Incident
-                      </button>
-
-                      <button
-                        id="btn-toggle-false-alarm"
-                        className="btn btn-ghost"
-                        onClick={() => {
-                          setShowFalseAlarmForm(prev => !prev);
-                          setShowResolveForm(false);
-                        }}
-                      >
-                        ✕ Mark False Alarm
-                      </button>
+                    <div className="detail-reason-box">
+                      <strong>Detection Note:</strong> {selectedIncident.reason}
                     </div>
 
-                    {/* Guard Assignment Section */}
-                    <div className="guard-assign-row">
-                      <label htmlFor="guard-select" style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-                        Assign Guard:
-                      </label>
-                      <select
-                        id="guard-select"
-                        className="form-control"
-                        style={{ width: 'auto', minWidth: 220 }}
-                        value={selectedGuardToAssign}
-                        onChange={e => setSelectedGuardToAssign(e.target.value)}
-                      >
-                        {guards.map(g => (
-                          <option key={g.id} value={g.id}>
-                            {g.displayName} ({g.role}) — {g.availability === 'available' ? 'Available' : 'Busy'}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        id="btn-assign-guard"
-                        className="btn btn-secondary"
-                        onClick={() => assignGuard(selectedIncident.id, selectedGuardToAssign)}
-                      >
-                        Dispatch Guard
-                      </button>
-                    </div>
-
-                    {/* Outcome Note Form for Resolve */}
-                    {showResolveForm && (
-                      <form className="note-input-box" onSubmit={handleResolveSubmit}>
-                        <label htmlFor="resolve-note-input" className="form-label">
-                          Resolution Outcome Note (Required):
-                        </label>
-                        <input
-                          id="resolve-note-input"
-                          type="text"
-                          className="form-control"
-                          placeholder="e.g. Checked on resident; confirmed safe and walking home."
-                          value={resolveNote}
-                          onChange={e => setResolveNote(e.target.value)}
-                          required
-                          autoFocus
-                        />
-                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                          <button type="submit" className="btn btn-primary btn-sm">
-                            Confirm & Resolve
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => setShowResolveForm(false)}
+                    <div className="detail-grid">
+                      <div>
+                        <div className="detail-item-label">Location Area</div>
+                        <div className="detail-item-value">{selectedIncident.zoneName}</div>
+                      </div>
+                      <div>
+                        <div className="detail-item-label">Sensor / Pole</div>
+                        <div className="detail-item-value">{selectedIncident.poleId}</div>
+                      </div>
+                      <div>
+                        <div className="detail-item-label">Time Logged</div>
+                        <div className="detail-item-value">{selectedIncident.createdAt}</div>
+                      </div>
+                      <div>
+                        <div className="detail-item-label">Assigned Guard</div>
+                        <div
+                          className="detail-item-value"
+                          style={{
+                            color: assignedGuard ? 'var(--accent)' : 'var(--text-muted)',
+                          }}
+                        >
+                          {assignedGuard
+                            ? `${assignedGuard.displayName} (${assignedGuard.role})`
+                            : 'Unassigned'}
+                        </div>
+                      </div>
+                      {selectedIncident.score !== undefined && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <div className="detail-item-label">Model Score (Uncalibrated)</div>
+                          <div
+                            className="detail-item-value"
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
                           >
-                            Cancel
+                            <span>{(selectedIncident.score * 100).toFixed(0)}%</span>
+                            <span
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: 'normal',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              Model anomaly score only — not a calibrated emergency probability.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  {/* Action Controls Card */}
+                  <section className="detail-actions-card">
+                    <h3>Guard Response Actions</h3>
+
+                    {isClosed ? (
+                      <div className="notice notice-ok">
+                        This incident has been closed (
+                        {selectedIncident.status === 'resolved' ? 'Resolved' : 'False Alarm'}
+                        ). Assigned officer has been released back to patrol.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="actions-toolbar">
+                          {selectedIncident.status === 'open' && (
+                            <button
+                              id="btn-acknowledge"
+                              className="btn btn-primary"
+                              onClick={() => acknowledgeIncident(selectedIncident.id)}
+                            >
+                              ✓ Acknowledge Incident
+                            </button>
+                          )}
+
+                          {selectedIncident.status === 'assigned' && (
+                            <button
+                              id="btn-mark-arrived"
+                              className="btn btn-primary"
+                              onClick={() => markArrived(selectedIncident.id)}
+                            >
+                              📍 Mark Officer Arrived on Scene
+                            </button>
+                          )}
+
+                          <button
+                            id="btn-toggle-resolve"
+                            className="btn btn-secondary"
+                            onClick={() => {
+                              setShowResolveForm((prev) => !prev);
+                              setShowFalseAlarmForm(false);
+                            }}
+                          >
+                            ✓ Resolve Incident
+                          </button>
+
+                          <button
+                            id="btn-toggle-false-alarm"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              setShowFalseAlarmForm((prev) => !prev);
+                              setShowResolveForm(false);
+                            }}
+                          >
+                            ✕ Mark False Alarm
                           </button>
                         </div>
-                      </form>
-                    )}
 
-                    {/* Reason Note Form for False Alarm */}
-                    {showFalseAlarmForm && (
-                      <form className="note-input-box" onSubmit={handleFalseAlarmSubmit}>
-                        <label htmlFor="false-alarm-note-input" className="form-label">
-                          False Alarm Reason Note (Required):
-                        </label>
-                        <input
-                          id="false-alarm-note-input"
-                          type="text"
-                          className="form-control"
-                          placeholder="e.g. Resident was doing yoga / stretching on grass; not a fall."
-                          value={falseAlarmNote}
-                          onChange={e => setFalseAlarmNote(e.target.value)}
-                          required
-                          autoFocus
-                        />
-                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                          <button type="submit" className="btn btn-danger btn-sm">
-                            Confirm False Alarm
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => setShowFalseAlarmForm(false)}
+                        {/* Guard Assignment Section */}
+                        {selectedIncident.assignedGuardId ? (
+                          <div
+                            className="notice notice-info"
+                            style={{ marginTop: '12px', fontSize: '13px' }}
                           >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    )}
-                  </>
-                )}
-              </section>
+                            <strong>Assigned Responder:</strong>{' '}
+                            {assignedGuard?.displayName || selectedIncident.assignedGuardId}{' '}
+                            {selectedIncident.status === 'investigating'
+                              ? 'is currently on scene investigating.'
+                              : 'has been dispatched and is en route. Click "Mark Officer Arrived on Scene" once they reach the location.'}
+                          </div>
+                        ) : (
+                          <div className="guard-assign-row">
+                            <label
+                              htmlFor="guard-select"
+                              style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}
+                            >
+                              Assign Guard:
+                            </label>
+                            <select
+                              id="guard-select"
+                              className="form-control"
+                              style={{ width: 'auto', minWidth: 230 }}
+                              value={selectedGuardToAssign}
+                              onChange={(e) => setSelectedGuardToAssign(e.target.value)}
+                            >
+                              {guards.map((g) => (
+                                <option
+                                  key={g.id}
+                                  value={g.id}
+                                  disabled={g.availability === 'busy'}
+                                >
+                                  {g.displayName} ({g.role}) —{' '}
+                                  {g.availability === 'available' ? 'Available' : 'Busy (Assigned)'}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              id="btn-assign-guard"
+                              className="btn btn-secondary"
+                              disabled={!canDispatchCandidate}
+                              onClick={() =>
+                                assignGuard(selectedIncident.id, selectedGuardToAssign)
+                              }
+                            >
+                              {availableGuardsCount === 0
+                                ? 'All Guards Busy'
+                                : 'Dispatch Guard'}
+                            </button>
+                          </div>
+                        )}
 
-              {/* Activity Trail Card */}
-              <section className="detail-actions-card">
-                <h3>Activity Trail</h3>
-                <div className="activity-trail" role="list" aria-label="Incident activity chronology">
-                  {selectedIncident.activityTrail.map((act, index) => (
-                    <div key={index} className="activity-step" role="listitem">
-                      <div className="activity-step-time">{act.time}</div>
-                      <div className="activity-step-desc">{act.action}</div>
-                      {act.actor && <div className="activity-step-actor">— {act.actor}</div>}
-                    </div>
-                  ))}
+                        {/* Outcome Note Form for Resolve */}
+                        {showResolveForm && (
+                          <form className="note-input-box" onSubmit={handleResolveSubmit}>
+                            <label htmlFor="resolve-note-input" className="form-label">
+                              Resolution Outcome Note (Required):
+                            </label>
+                            <input
+                              id="resolve-note-input"
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. Checked on resident; confirmed safe and walking home."
+                              value={resolveNote}
+                              onChange={(e) => setResolveNote(e.target.value)}
+                              required
+                              autoFocus
+                            />
+                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                              <button type="submit" className="btn btn-primary btn-sm">
+                                Confirm &amp; Resolve
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => setShowResolveForm(false)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {/* Reason Note Form for False Alarm */}
+                        {showFalseAlarmForm && (
+                          <form className="note-input-box" onSubmit={handleFalseAlarmSubmit}>
+                            <label htmlFor="false-alarm-note-input" className="form-label">
+                              False Alarm Reason Note (Required):
+                            </label>
+                            <input
+                              id="false-alarm-note-input"
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. Resident was stretching on grass; not a fall."
+                              value={falseAlarmNote}
+                              onChange={(e) => setFalseAlarmNote(e.target.value)}
+                              required
+                              autoFocus
+                            />
+                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                              <button type="submit" className="btn btn-danger btn-sm">
+                                Confirm False Alarm
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => setShowFalseAlarmForm(false)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </>
+                    )}
+                  </section>
                 </div>
-              </section>
+
+                {/* ── Right Dossier Column: Evidence Context + Activity Trail ── */}
+                <div className="incident-dossier-col">
+                  {/* Sensor, Lighting & Camera Evidence Context Card */}
+                  <section className="detail-actions-card">
+                    <h3>Sensor, Lighting &amp; Camera Context</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          background: 'rgba(15, 23, 42, 0.55)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(56, 189, 248, 0.22)',
+                        }}
+                      >
+                        <div className="detail-item-label" style={{ marginBottom: '4px' }}>
+                          Sensor Observation Basis
+                        </div>
+                        <div style={{ fontSize: '14px', color: 'var(--text-primary)', lineHeight: 1.45 }}>
+                          {selectedIncident.sensorBasis ||
+                            'Simulated threshold event logged by park monitoring node.'}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          background: 'rgba(15, 23, 42, 0.55)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(250, 204, 21, 0.25)',
+                        }}
+                      >
+                        <div className="detail-item-label" style={{ marginBottom: '4px' }}>
+                          Safety Lighting Response
+                        </div>
+                        <div style={{ fontSize: '14px', color: '#fde68a', lineHeight: 1.45 }}>
+                          {selectedIncident.lightingResponseNote ||
+                            'Standard virtual pathway lighting maintained (70%).'}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          padding: '10px 12px',
+                          background: 'rgba(15, 23, 42, 0.55)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(148, 163, 184, 0.22)',
+                        }}
+                      >
+                        <div className="detail-item-label" style={{ marginBottom: '4px' }}>
+                          CCTV Camera Availability
+                        </div>
+                        <div style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                          📹{' '}
+                          {selectedIncident.cameraContext ||
+                            'No camera view available. On-site check required.'}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Activity Trail Card */}
+                  <section className="detail-actions-card">
+                    <h3>Activity Trail</h3>
+                    <div
+                      className="activity-trail"
+                      role="list"
+                      aria-label="Incident activity chronology"
+                    >
+                      {selectedIncident.activityTrail.map((act, index) => (
+                        <div key={index} className="activity-step" role="listitem">
+                          <div className="activity-step-time">{act.time}</div>
+                          <div className="activity-step-desc">{act.action}</div>
+                          {act.actor && <div className="activity-step-actor">— {act.actor}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
             </div>
           )}
         </div>
