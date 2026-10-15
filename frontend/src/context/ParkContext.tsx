@@ -147,6 +147,57 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [],
   );
 
+  const DEDUP_WINDOW_MS = 30_000;
+
+  const upsertSensorIncident = useCallback((incoming: Incident) => {
+    const nowEpoch = Date.now();
+    const nowStr = new Date().toLocaleTimeString();
+
+    setIncidents((prev) => {
+      // Never deduplicate resident_sos
+      if (incoming.type !== 'resident_sos') {
+        const existingIdx = prev.findIndex(
+          (inc) =>
+            inc.type === incoming.type &&
+            inc.poleId === incoming.poleId &&
+            inc.status !== 'resolved' &&
+            inc.status !== 'false_alarm' &&
+            nowEpoch - (inc.lastUpdatedEpoch ?? 0) <= DEDUP_WINDOW_MS,
+        );
+
+        if (existingIdx !== -1) {
+          const existing = prev[existingIdx];
+          const nextCount = (existing.occurrenceCount ?? 1) + 1;
+          const updated: Incident = {
+            ...existing,
+            occurrenceCount: nextCount,
+            lastUpdatedEpoch: nowEpoch,
+            activityTrail: [
+              ...existing.activityTrail,
+              {
+                time: nowStr,
+                action: `Repeated ${incoming.displayType} signal merged within 30s deduplication window (×${nextCount})`,
+                actor: 'Alert Deduplication Filter',
+              },
+            ],
+          };
+          setSelectedIncidentId(existing.id);
+          const copy = [...prev];
+          copy[existingIdx] = updated;
+          return copy;
+        }
+      }
+
+      const withMeta: Incident = {
+        ...incoming,
+        occurrenceCount: 1,
+        lastUpdatedEpoch: nowEpoch,
+      };
+      setSelectedIncidentId(withMeta.id);
+      return [withMeta, ...prev];
+    });
+  }, []);
+
   const resetView = useCallback(() => {
     setResetCounter((c) => c + 1);
   }, []);
@@ -310,8 +361,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ],
     };
 
-    setIncidents((prev) => [newIncident, ...prev]);
-    setSelectedIncidentId(incidentId);
+    upsertSensorIncident(newIncident);
 
     addEvent(
       'Unusual Movement — West Loop · AS-104',
@@ -327,7 +377,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return evalResult;
-  }, [addEvent, blockedRouteZone, offlinePoleId]);
+  }, [addEvent, blockedRouteZone, offlinePoleId, upsertSensorIncident]);
 
   // 2. Simulated Distress Scream (AS-101) — Strictly labeled 'simulated'
   const triggerScream = useCallback(() => {
@@ -358,8 +408,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ],
     };
 
-    setIncidents((prev) => [newIncident, ...prev]);
-    setSelectedIncidentId(incidentId);
+    upsertSensorIncident(newIncident);
 
     addEvent(
       'Possible Distress Sound — North Entrance · AS-101',
@@ -373,7 +422,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cameraAvailability: 'No camera view available. On-site check required.',
       },
     );
-  }, [addEvent]);
+  }, [addEvent, upsertSensorIncident]);
 
   // 3a. Combined Anomaly (Same Zone AS-104 within 15s) -> Escalates to Urgent (Signals Agree)
   const triggerCombined = useCallback(async () => {
@@ -427,8 +476,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ],
     };
 
-    setIncidents((prev) => [newIncident, ...prev]);
-    setSelectedIncidentId(incidentId);
+    upsertSensorIncident(newIncident);
 
     addEvent(
       '🚨 Signals Agree — West Loop · AS-104',
@@ -442,7 +490,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cameraAvailability: 'No camera view available. On-site check required.',
       },
     );
-  }, [addEvent, blockedRouteZone]);
+  }, [addEvent, blockedRouteZone, upsertSensorIncident]);
 
   // 3b. Unrelated Signals (Different Zones: AS-101 vs AS-104) -> Kept as 2 separate Needs Review cases
   const triggerUnrelatedSignals = useCallback(async () => {
@@ -465,8 +513,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLighting((prev) => ({ ...prev, 'AS-104': 100 }));
     setLightingNote(lightNote);
 
+    const nowEpoch = Date.now();
     const now = new Date().toLocaleTimeString();
-    const suffix = Date.now().toString().slice(-4);
+    const suffix = nowEpoch.toString().slice(-4);
     const incNorthId = `INC-${suffix}A`;
     const incWestId = `INC-${suffix}B`;
 
@@ -486,6 +535,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       score: 0.83,
       cameraContext: 'No camera view available. On-site check required.',
       sensorBasis: 'Spatial separation: AS-101 ≠ AS-104 (Not fused)',
+      occurrenceCount: 1,
+      lastUpdatedEpoch: nowEpoch,
       activityTrail: [{ time: now, action: 'Logged as separate Needs Review incident at AS-101', actor: 'Alert Rules' }],
     };
 
@@ -506,6 +557,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lightingResponseNote: lightNote,
       cameraContext: 'No camera view available. On-site check required.',
       sensorBasis: 'Spatial separation: AS-104 ≠ AS-101 (Not fused)',
+      occurrenceCount: 1,
+      lastUpdatedEpoch: nowEpoch,
       activityTrail: [
         { time: now, action: 'Logged as separate Needs Review incident at AS-104', actor: 'Alert Rules' },
         { time: now, action: lightNote, actor: 'Safety Lighting Response' },
@@ -571,8 +624,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ],
         };
 
-        setIncidents((prev) => [newIncident, ...prev]);
-        setSelectedIncidentId(incidentId);
+        upsertSensorIncident(newIncident);
 
         addEvent(
           `Possible Distress Sound — ${inf.sample_id}`,
@@ -604,7 +656,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return inf;
     },
-    [addEvent],
+    [addEvent, upsertSensorIncident],
   );
 
   // 4b. Live Browser Microphone Inference (16kHz PCM WAV -> source_mode = 'live')
@@ -649,8 +701,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ],
         };
 
-        setIncidents((prev) => [newIncident, ...prev]);
-        setSelectedIncidentId(incidentId);
+        upsertSensorIncident(newIncident);
 
         addEvent(
           'Possible Distress Sound — Live Microphone',
@@ -681,7 +732,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return inf;
     },
-    [addEvent],
+    [addEvent, upsertSensorIncident],
   );
 
   // 5. Benign Rain Visual Toggle
@@ -718,9 +769,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activityTrail: [{ time: now, action: 'Virtual lighting threshold warning triggered', actor: 'System (Simulated)' }],
     };
 
-    setIncidents((prev) => [newIncident, ...prev]);
-    setSelectedIncidentId(incidentId);
-  }, [setPoleLight]);
+    upsertSensorIncident(newIncident);
+  }, [setPoleLight, upsertSensorIncident]);
 
   // 7. Unsafe Route / Blocked Path (Central Path)
   const triggerUnsafeRoute = useCallback(() => {
@@ -747,8 +797,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activityTrail: [{ time: now, action: 'Central Path marked blocked in simulation', actor: 'Routing Engine' }],
       };
 
-      setIncidents((prev) => [newIncident, ...prev]);
-      setSelectedIncidentId(incidentId);
+      upsertSensorIncident(newIncident);
 
       addEvent(
         'Route Notice — Central Path Blocked',
@@ -759,7 +808,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       addEvent('Route Cleared — Central Path', 'Central Path reopened to normal pedestrian flow.', 'success');
     }
-  }, [blockedRouteZone, addEvent]);
+  }, [blockedRouteZone, addEvent, upsertSensorIncident]);
 
   // 8. Sensor Offline (AS-103)
   const triggerOffline = useCallback(() => {
@@ -784,8 +833,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activityTrail: [{ time: now, action: 'Sensor heartbeat timeout detected', actor: 'System (Simulated)' }],
     };
 
-    setIncidents((prev) => [newIncident, ...prev]);
-    setSelectedIncidentId(incidentId);
+    upsertSensorIncident(newIncident);
 
     addEvent(
       'Sensor Offline — Central Path · AS-103',
@@ -793,7 +841,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       'warning',
       'AS-103',
     );
-  }, [addEvent]);
+  }, [addEvent, upsertSensorIncident]);
 
   // 9. Reset All Scenarios
   const handleReset = useCallback(() => {
@@ -878,7 +926,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (id: string, guardId: string): boolean => {
       const now = new Date().toLocaleTimeString();
       const guard = guards.find((g) => g.id === guardId);
-      if (!guard) return false;
+      if (!guard || guard.availability === 'busy') return false;
 
       const targetIncident = incidents.find((i) => i.id === id);
       const targetPole = targetIncident ? POLES.find((p) => p.id === targetIncident.poleId) : undefined;

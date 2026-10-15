@@ -60,6 +60,8 @@ export interface Incident {
   lightingResponseNote?: string;
   cameraContext?: string;
   sensorBasis?: string;
+  occurrenceCount?: number;
+  lastUpdatedEpoch?: number;
   activityTrail: ActivityEntry[];
 }
 
