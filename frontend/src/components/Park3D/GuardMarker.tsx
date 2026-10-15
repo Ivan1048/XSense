@@ -28,9 +28,9 @@ export default function GuardMarker({
   const diamondRef = useRef<THREE.Mesh>(null);
   const progressRef = useRef<number>(status === 'arrived' ? 1 : 0);
 
-  // Offset destination slightly so the guard does not overlap directly on the pole
-  const destX = targetPos[0] + 1.8;
-  const destZ = targetPos[1] + 1.2;
+  // Offset destination so the guard stands beside the pole and clear of any fallen person
+  const destX = targetPos[0] - 1.8;
+  const destZ = targetPos[1] - 1.4;
 
   useFrame((state, delta) => {
     // Transit speed: traverses the park pathway over ~4.5 seconds
@@ -92,15 +92,16 @@ export default function GuardMarker({
       </mesh>
 
       {/* Slender vertical telemetry stem linking ground coordinate to the floating shield */}
-      <mesh position={[0, 0.8, 0]}>
-        <cylinderGeometry args={[0.02, 0.02, 1.4, 8]} />
+      <mesh position={[0, 1.2, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, 2.2, 8]} />
         <meshBasicMaterial color="#38bdf8" transparent opacity={0.65} />
       </mesh>
 
       {/* Floating Blue Shield Icon — clearly distinct from LiDAR dots */}
-      <Html position={[0, 1.85, 0]} center distanceFactor={26}>
+      <Html position={[0, 2.7, 0]} center distanceFactor={26}>
         <button
           className="guard-shield-btn"
+          style={{ padding: '3px 8px', gap: '6px' }}
           onClick={(e) => {
             e.stopPropagation();
             onSelect?.();
@@ -109,8 +110,8 @@ export default function GuardMarker({
         >
           <div className="guard-shield-icon-wrap" aria-hidden="true">
             <svg
-              width="26"
-              height="30"
+              width="22"
+              height="26"
               viewBox="0 0 24 28"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
@@ -131,8 +132,12 @@ export default function GuardMarker({
             </svg>
           </div>
           <div className="guard-shield-text">
-            <span className="guard-shield-name">{guardName}</span>
-            <span className="guard-shield-badge">GUARD · {statusLabel}</span>
+            <span className="guard-shield-name" style={{ fontSize: '11px', lineHeight: 1.15 }}>
+              {guardName}
+            </span>
+            <span className="guard-shield-badge" style={{ fontSize: '9px' }}>
+              GUARD · {statusLabel}
+            </span>
           </div>
         </button>
       </Html>

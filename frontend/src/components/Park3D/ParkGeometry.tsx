@@ -187,9 +187,9 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false }: Pa
 
       {/* Park name label */}
       <Text
-        position={[-14, 0.06, -20]}
+        position={[-15.5, 0.08, -20]}
         rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={1.4}
+        fontSize={1.15}
         color="#b8d4e8"
         anchorX="center"
       >

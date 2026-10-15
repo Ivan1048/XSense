@@ -121,7 +121,11 @@ export default function AnonymousDot({
       )}
 
       {showPostureBox && (
-        <Html position={[0, htmlYOffset, 0]} center distanceFactor={24}>
+        <Html
+          position={isCollapsed ? [0, -0.35, 1.35] : [0, htmlYOffset, 0]}
+          center
+          distanceFactor={24}
+        >
           <div
             style={{
               padding: '4px 9px',
