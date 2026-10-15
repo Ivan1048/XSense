@@ -1166,3 +1166,24 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
   .incidents-body { flex-direction: column; }
   .incidents-list { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 50vh; }
 }
+
+/* Package A1: Prevent label/value collision on multi-line readout cards */
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 6px 0;
+}
+
+.metric-label {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.metric-value {
+  text-align: right;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
