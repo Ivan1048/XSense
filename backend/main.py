@@ -3,7 +3,7 @@ XSense Backend — FastAPI Application
 Phase 1: Skeleton structure with stub endpoints.
 Full implementation in Phase 3 (database + WebSockets).
 
-Run:  uvicorn main:app --reload --port 8000
+Run:  python main.py   (or: uvicorn main:app --reload --port 8000)
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,3 +52,17 @@ def root():
 @app.get("/health", tags=["Health"])
 def health():
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import os
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        app_dir=os.path.dirname(os.path.abspath(__file__)),
+    )
+
