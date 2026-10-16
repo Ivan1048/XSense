@@ -144,7 +144,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSosPoleId(inc.poleId);
           setSelectedPoleId(inc.poleId);
           setLighting((prev) => ({ ...prev, [inc.poleId]: 100 }));
-          setLightingNote(`Nearby Lights On — SOS pole ${inc.poleId} illuminated to 100%.`);
+          setLightingNote(inc.lightingResponseNote || `Nearby Lights On — SOS pole ${inc.poleId} illuminated to 100%.`);
         }
       }
     };
@@ -1106,31 +1106,78 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [guards],
   );
 
+  const sync3DStateWithActiveIncidents = useCallback(
+    (updatedIncidents: Incident[], closedIncident?: Incident) => {
+      const openList = updatedIncidents.filter(
+        (i) => i.status !== 'resolved' && i.status !== 'false_alarm',
+      );
+
+      // 1. Fall state (silent_fall or combined_anomaly)
+      const openFall = openList.find(
+        (i) => i.type === 'silent_fall' || i.type === 'combined_anomaly',
+      );
+      setFallPoleId(openFall ? openFall.poleId : null);
+
+      // 2. Acoustic state (possible_scream or combined_anomaly)
+      const openAcoustic = openList.find(
+        (i) => i.type === 'possible_scream' || i.type === 'combined_anomaly',
+      );
+      setAcousticPoleId(openAcoustic ? openAcoustic.poleId : null);
+
+      // 3. Resident SOS state
+      const openSOS = openList.find((i) => i.type === 'resident_sos');
+      setSosPoleId(openSOS ? openSOS.poleId : null);
+
+      // 4. Sensor offline state
+      const openOffline = openList.find((i) => i.type === 'sensor_offline');
+      setOfflinePoleId(openOffline ? openOffline.poleId : null);
+
+      // 5. Blocked route state
+      const openBlocked = openList.find((i) => i.type === 'route_blocked');
+      setBlockedRouteZone(openBlocked ? openBlocked.zoneId : null);
+
+      // 6. Restore closed pole's virtual lamp to 70% if no open incident remains at that pole
+      if (closedIncident && closedIncident.poleId) {
+        const stillActiveAtPole = openList.some((i) => i.poleId === closedIncident.poleId);
+        if (!stillActiveAtPole) {
+          setLighting((prev) => ({ ...prev, [closedIncident.poleId]: 70 }));
+        }
+      }
+
+      // 7. Update or clear emergency lighting banner
+      const openBoosted = openList.find(
+        (i) =>
+          i.type === 'silent_fall' ||
+          i.type === 'combined_anomaly' ||
+          i.type === 'resident_sos',
+      );
+      setLightingNote(openBoosted?.lightingResponseNote || '');
+    },
+    [],
+  );
+
   const resolveIncident = useCallback(
     (id: string, outcomeNote: string) => {
       const now = new Date().toLocaleTimeString();
       let assignedId: string | undefined;
+      let closedInc: Incident | undefined;
 
       setIncidents((prev) => {
-        const updated = prev.map((inc) => {
+        const next = prev.map((inc) => {
           if (inc.id !== id) return inc;
           assignedId = inc.assignedGuardId;
-          return {
+          closedInc = {
             ...inc,
-            status: 'resolved' as const,
+            status: 'resolved',
             activityTrail: [
               ...inc.activityTrail,
               { time: now, action: `Resolved: ${outcomeNote}`, actor: 'Guard Station' },
             ],
           };
+          return closedInc;
         });
-        const hasOpenSOS = updated.some(
-          (inc) => inc.type === 'resident_sos' && inc.status !== 'resolved' && inc.status !== 'false_alarm',
-        );
-        if (!hasOpenSOS) {
-          setSosPoleId(null);
-        }
-        return updated;
+        sync3DStateWithActiveIncidents(next, closedInc);
+        return next;
       });
 
       setDispatchedGuards((prev) =>
@@ -1138,39 +1185,38 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       if (assignedId) {
-        setGuards((prev) => prev.map((g) => (g.id === assignedId ? { ...g, availability: 'available' } : g)));
+        setGuards((prev) =>
+          prev.map((g) => (g.id === assignedId ? { ...g, availability: 'available' } : g)),
+        );
       }
 
       addEvent('Incident Resolved', `Case ${id} marked resolved: ${outcomeNote}`, 'success');
     },
-    [addEvent],
+    [addEvent, sync3DStateWithActiveIncidents],
   );
 
   const markFalseAlarm = useCallback(
     (id: string, reasonNote: string) => {
       const now = new Date().toLocaleTimeString();
       let assignedId: string | undefined;
+      let closedInc: Incident | undefined;
 
       setIncidents((prev) => {
-        const updated = prev.map((inc) => {
+        const next = prev.map((inc) => {
           if (inc.id !== id) return inc;
           assignedId = inc.assignedGuardId;
-          return {
+          closedInc = {
             ...inc,
-            status: 'false_alarm' as const,
+            status: 'false_alarm',
             activityTrail: [
               ...inc.activityTrail,
               { time: now, action: `Closed as False Alarm: ${reasonNote}`, actor: 'Guard Station' },
             ],
           };
+          return closedInc;
         });
-        const hasOpenSOS = updated.some(
-          (inc) => inc.type === 'resident_sos' && inc.status !== 'resolved' && inc.status !== 'false_alarm',
-        );
-        if (!hasOpenSOS) {
-          setSosPoleId(null);
-        }
-        return updated;
+        sync3DStateWithActiveIncidents(next, closedInc);
+        return next;
       });
 
       setDispatchedGuards((prev) =>
@@ -1178,12 +1224,14 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       if (assignedId) {
-        setGuards((prev) => prev.map((g) => (g.id === assignedId ? { ...g, availability: 'available' } : g)));
+        setGuards((prev) =>
+          prev.map((g) => (g.id === assignedId ? { ...g, availability: 'available' } : g)),
+        );
       }
 
       addEvent('False Alarm Recorded', `Case ${id} marked false alarm: ${reasonNote}`, 'info');
     },
-    [addEvent],
+    [addEvent, sync3DStateWithActiveIncidents],
   );
 
   const removeDispatchedGuard = useCallback((guardId: string) => {
