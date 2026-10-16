@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type {
   AlertEvent,
   AudioInferenceResult,
@@ -116,6 +116,45 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [dispatchedGuards, setDispatchedGuards] = useState<DispatchedGuardState[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+
+  // Multi-tab real-time synchronization for side-by-side Resident SOS & Guard Console demo
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('xsense_state_sync');
+
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      if (data.type === 'SYNC_INCIDENTS' && Array.isArray(data.incidents)) {
+        setIncidents(data.incidents);
+      }
+      if (data.type === 'SYNC_GUARDS' && Array.isArray(data.guards)) {
+        setGuards(data.guards);
+      }
+      if (data.type === 'SOS_CREATED' && data.incident) {
+        setIncidents((prev) => {
+          if (prev.some((i) => i.id === data.incident.id)) return prev;
+          return [data.incident, ...prev];
+        });
+        setSelectedIncidentId(data.incident.id);
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, []);
+
+  // Broadcast incident and guard updates to any open Resident SOS tab
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('xsense_state_sync');
+    channel.postMessage({ type: 'SYNC_INCIDENTS', incidents });
+    channel.postMessage({ type: 'SYNC_GUARDS', guards });
+    return () => {
+      channel.close();
+    };
+  }, [incidents, guards]);
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
@@ -899,6 +938,13 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       setIncidents((prev) => [newIncident, ...prev]);
+
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('xsense_state_sync');
+        ch.postMessage({ type: 'SOS_CREATED', incident: newIncident });
+        ch.close();
+      }
+
       setSelectedIncidentId(incidentId);
 
       addEvent(

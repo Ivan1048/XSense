@@ -646,29 +646,90 @@ export default function ParkOverview() {
                       </div>
                     )}
 
-                    {/* Quick Pole Resident SOS QR Link */}
-                    <div
+                    {/* Expandable Resident QR Code & SOS Portal Link */}
+                    <details
                       style={{
                         marginTop: '10px',
                         paddingTop: '10px',
                         borderTop: '1px solid var(--border-subtle)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '8px',
+                        fontSize: '12px',
                       }}
                     >
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                        Resident QR Portal ({selectedPole.id})
-                      </span>
-                      <Link
-                        to={`/sos?pole=${selectedPole.id}&zone=${selectedPole.zone}`}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '11px', padding: '4px 10px', minHeight: '28px', textDecoration: 'none' }}
+                      <summary
+                        style={{
+                          cursor: 'pointer',
+                          color: 'var(--accent)',
+                          fontWeight: 600,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
                       >
-                        🆘 Open Pole SOS Page
-                      </Link>
-                    </div>
+                        <span>📱 Resident SOS QR Code ({selectedPole.id})</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Show QR ▾</span>
+                      </summary>
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          padding: '10px',
+                          background: 'var(--bg-elevated)',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-subtle)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                        }}
+                      >
+                        {/* Clean deterministic SVG QR Matrix representation */}
+                        <svg
+                          width="64"
+                          height="64"
+                          viewBox="0 0 21 21"
+                          style={{
+                            background: '#ffffff',
+                            padding: '4px',
+                            borderRadius: '6px',
+                            flexShrink: 0,
+                          }}
+                          aria-label={`QR Code for pole ${selectedPole.id}`}
+                        >
+                          <path
+                            fill="#0a101d"
+                            d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z M14,0 h7 v7 h-7 z M15,1 v5 h5 v-5 z M16,2 h3 v3 h-3 z M0,14 h7 v7 h-7 z M1,15 v5 h5 v-5 z M2,16 h3 v3 h-3 z M8,1 h2 v2 h-2 z M11,2 h2 v3 h-2 z M8,5 h3 v2 h-3 z M1,8 h3 v2 h-3 z M5,9 h4 v2 h-4 z M10,8 h3 v3 h-3 z M14,9 h3 v2 h-3 z M18,8 h2 v4 h-2 z M8,12 h2 v3 h-2 z M11,13 h4 v2 h-4 z M16,12 h3 v2 h-3 z M9,16 h3 v2 h-3 z M13,17 h3 v3 h-3 z M17,15 h3 v3 h-3 z M8,19 h4 v2 h-4 z"
+                          />
+                        </svg>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                            Pole {selectedPole.id} QR Entry
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: 'var(--text-muted)',
+                              wordBreak: 'break-all',
+                              marginBottom: '6px',
+                            }}
+                          >
+                            /sos?pole={selectedPole.id}&amp;zone={selectedPole.zone}
+                          </div>
+                          <Link
+                            to={`/sos?pole=${selectedPole.id}&zone=${selectedPole.zone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{
+                              fontSize: '11px',
+                              padding: '4px 10px',
+                              minHeight: '28px',
+                              textDecoration: 'none',
+                              display: 'inline-block',
+                            }}
+                          >
+                            🆘 Open SOS in New Tab ↗
+                          </Link>
+                        </div>
+                      </div>
+                    </details>
                   </>
                 )}
               </>
