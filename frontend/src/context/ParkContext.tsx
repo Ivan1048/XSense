@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type {
   AlertEvent,
   AudioInferenceResult,
@@ -98,6 +98,22 @@ function initialLighting(): LightingMap {
   return Object.fromEntries(POLES.map((p) => [p.id, 70]));
 }
 
+const STORAGE_KEY = 'xsense_shared_session_v1';
+
+function loadSessionState(): {
+  incidents?: Incident[];
+  guards?: Guard[];
+  dispatchedGuards?: DispatchedGuardState[];
+} {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [selectedPoleId, setSelectedPoleId] = useState<string>('AS-103');
   const [lighting, setLighting] = useState<LightingMap>(initialLighting);
@@ -114,60 +130,14 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isRaining, setIsRaining] = useState<boolean>(false);
   const [resetCounter, setResetCounter] = useState<number>(0);
   const [events, setEvents] = useState<AlertEvent[]>([createInitialEvent()]);
-  const [guards, setGuards] = useState<Guard[]>(GUARDS);
-  const [dispatchedGuards, setDispatchedGuards] = useState<DispatchedGuardState[]>([]);
-  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [guards, setGuards] = useState<Guard[]>(() => loadSessionState().guards ?? GUARDS);
+  const [dispatchedGuards, setDispatchedGuards] = useState<DispatchedGuardState[]>(
+    () => loadSessionState().dispatchedGuards ?? [],
+  );
+  const [incidents, setIncidents] = useState<Incident[]>(
+    () => loadSessionState().incidents ?? [],
+  );
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
-
-  // Multi-tab real-time synchronization for side-by-side Resident SOS & Guard Console demo
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
-    const channel = new BroadcastChannel('xsense_state_sync');
-
-    channel.onmessage = (event) => {
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-      if (data.type === 'SYNC_INCIDENTS' && Array.isArray(data.incidents)) {
-        setIncidents(data.incidents);
-      }
-      if (data.type === 'SYNC_GUARDS' && Array.isArray(data.guards)) {
-        setGuards(data.guards);
-      }
-      if (data.type === 'SYNC_DISPATCHED' && Array.isArray(data.dispatchedGuards)) {
-        setDispatchedGuards(data.dispatchedGuards);
-      }
-      if (data.type === 'SOS_CREATED' && data.incident) {
-        const inc = data.incident as Incident;
-        setIncidents((prev) => {
-          if (prev.some((i) => i.id === inc.id)) return prev;
-          return [inc, ...prev];
-        });
-        setSelectedIncidentId(inc.id);
-        if (inc.poleId && inc.poleId !== 'N/A') {
-          setSosPoleId(inc.poleId);
-          setSelectedPoleId(inc.poleId);
-          setLighting((prev) => ({ ...prev, [inc.poleId]: 100 }));
-          setLightingNote(inc.lightingResponseNote || `Nearby Lights On — SOS pole ${inc.poleId} illuminated to 100%.`);
-        }
-      }
-    };
-
-    return () => {
-      channel.close();
-    };
-  }, []);
-
-  // Broadcast incident and guard updates to any open Resident SOS tab
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
-    const channel = new BroadcastChannel('xsense_state_sync');
-    channel.postMessage({ type: 'SYNC_INCIDENTS', incidents });
-    channel.postMessage({ type: 'SYNC_GUARDS', guards });
-    channel.postMessage({ type: 'SYNC_DISPATCHED', dispatchedGuards });
-    return () => {
-      channel.close();
-    };
-  }, [incidents, guards, dispatchedGuards]);
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
@@ -204,6 +174,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const upsertSensorIncident = useCallback((incoming: Incident) => {
     const nowEpoch = Date.now();
     const nowStr = new Date().toLocaleTimeString();
+    let targetSelectedId: string = incoming.id;
 
     setIncidents((prev) => {
       // Never deduplicate resident_sos
@@ -233,7 +204,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
               },
             ],
           };
-          setSelectedIncidentId(existing.id);
+          targetSelectedId = existing.id;
           const copy = [...prev];
           copy[existingIdx] = updated;
           return copy;
@@ -245,9 +216,11 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         occurrenceCount: 1,
         lastUpdatedEpoch: nowEpoch,
       };
-      setSelectedIncidentId(withMeta.id);
+      targetSelectedId = withMeta.id;
       return [withMeta, ...prev];
     });
+
+    setSelectedIncidentId(targetSelectedId);
   }, []);
 
   const resetView = useCallback(() => {
@@ -906,6 +879,16 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 9. Reset All Scenarios
   const handleReset = useCallback(() => {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const ch = new BroadcastChannel('xsense_state_sync');
+      ch.postMessage({ type: 'RESET_ALL' });
+      ch.close();
+    }
     setLighting(initialLighting());
     setLightingNote('');
     setFallPoleId(null);
@@ -1259,6 +1242,168 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeDispatchedGuard = useCallback((guardId: string) => {
     setDispatchedGuards((prev) => prev.filter((dg) => dg.guardId !== guardId));
   }, []);
+
+  const isFirstRenderRef = useRef(true);
+  const isRemoteUpdateRef = useRef(false);
+
+  // Always keep 3D emergency states (fallPoleId, sosPoleId, acousticPoleId, etc.) reconciled with open incidents
+  useEffect(() => {
+    const openList = incidents.filter(
+      (i) => i.status !== 'resolved' && i.status !== 'false_alarm',
+    );
+
+    const openFall = openList.find(
+      (i) => i.type === 'silent_fall' || i.type === 'combined_anomaly',
+    );
+    setFallPoleId(openFall ? openFall.poleId : null);
+    if (openFall) setIsLookalikeStop(false);
+
+    const openAcoustic = openList.find(
+      (i) => i.type === 'possible_scream' || i.type === 'combined_anomaly',
+    );
+    setAcousticPoleId(openAcoustic ? openAcoustic.poleId : null);
+
+    const openSOS = openList.find((i) => i.type === 'resident_sos');
+    setSosPoleId(openSOS ? openSOS.poleId : null);
+
+    const openOffline = openList.find((i) => i.type === 'sensor_offline');
+    setOfflinePoleId(openOffline ? openOffline.poleId : null);
+
+    const openBlocked = openList.find((i) => i.type === 'route_blocked');
+    setBlockedRouteZone(openBlocked ? openBlocked.zoneId : null);
+
+    // Ensure any pole with an active fall/combined/SOS incident is at 100%, and restore resolved 100% poles to 70%
+    setLighting((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const pole of POLES) {
+        const hasBoostedIncident = openList.some(
+          (i) =>
+            i.poleId === pole.id &&
+            (i.type === 'silent_fall' ||
+              i.type === 'combined_anomaly' ||
+              i.type === 'resident_sos'),
+        );
+        const hasDarkIncident = openList.some(
+          (i) => i.poleId === pole.id && i.type === 'lighting_warning',
+        );
+        if (hasBoostedIncident && next[pole.id] !== 100) {
+          next[pole.id] = 100;
+          changed = true;
+        } else if (!hasBoostedIncident && !hasDarkIncident && next[pole.id] === 100) {
+          next[pole.id] = 70;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    const openBoosted = openList.find(
+      (i) =>
+        i.type === 'silent_fall' ||
+        i.type === 'combined_anomaly' ||
+        i.type === 'resident_sos',
+    );
+    setLightingNote(openBoosted?.lightingResponseNote || '');
+  }, [incidents]);
+
+  // Multi-tab BroadcastChannel listener
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('xsense_state_sync');
+
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'REQUEST_STATE') {
+        // Another tab just opened and requested the authoritative state from an active tab
+        setIncidents((currentIncidents) => {
+          if (currentIncidents.length > 0) {
+            channel.postMessage({
+              type: 'STATE_SNAPSHOT',
+              incidents: currentIncidents,
+              guards,
+              dispatchedGuards,
+            });
+          }
+          return currentIncidents;
+        });
+        return;
+      }
+
+      if (data.type === 'STATE_SNAPSHOT') {
+        isRemoteUpdateRef.current = true;
+        if (Array.isArray(data.incidents)) setIncidents(data.incidents);
+        if (Array.isArray(data.guards)) setGuards(data.guards);
+        if (Array.isArray(data.dispatchedGuards)) setDispatchedGuards(data.dispatchedGuards);
+        return;
+      }
+
+      if (data.type === 'SOS_CREATED' && data.incident) {
+        const inc = data.incident as Incident;
+        isRemoteUpdateRef.current = true;
+        setIncidents((prev) => {
+          if (prev.some((i) => i.id === inc.id)) return prev;
+          return [inc, ...prev];
+        });
+        setSelectedIncidentId(inc.id);
+        if (inc.poleId) setSelectedPoleId(inc.poleId);
+        return;
+      }
+
+      if (data.type === 'RESET_ALL') {
+        isRemoteUpdateRef.current = true;
+        sessionStorage.removeItem(STORAGE_KEY);
+        setIncidents([]);
+        setGuards(GUARDS);
+        setDispatchedGuards([]);
+        setLighting(initialLighting());
+        setLightingNote('');
+        setIsLookalikeStop(false);
+        setIsRaining(false);
+      }
+    };
+
+    // Ask any existing tab for the latest state on mount
+    channel.postMessage({ type: 'REQUEST_STATE' });
+
+    return () => {
+      channel.close();
+    };
+  }, []);
+
+  // Multi-tab BroadcastChannel publisher (NEVER broadcasts on first render or remote updates)
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ incidents, guards, dispatchedGuards }),
+      );
+    } catch {
+      /* ignore storage quota errors */
+    }
+
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      return;
+    }
+
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('xsense_state_sync');
+    channel.postMessage({
+      type: 'STATE_SNAPSHOT',
+      incidents,
+      guards,
+      dispatchedGuards,
+    });
+    channel.close();
+  }, [incidents, guards, dispatchedGuards]);
 
   // Derived Metrics
   const darkAreasCount = useMemo(() => {
