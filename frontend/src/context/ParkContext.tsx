@@ -260,7 +260,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         lighting_boost_pct: 70,
         lighting_note: 'Normal pathway lighting maintained (70%).',
-        camera_context: 'No camera view available. On-site check required.',
+        camera_context: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       };
     }
 
@@ -327,7 +327,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         lighting_boost_pct: 100,
         lighting_note: fallbackLightNote,
-        camera_context: 'No camera view available. On-site check required.',
+        camera_context: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       };
     }
 
@@ -401,7 +401,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'SIMULATED: Synthetic acoustic distress event injected at North Entrance (uncalibrated score 0.84, not confirmed danger).',
       sourceMode: 'simulated',
       score: 0.84,
-      cameraContext: 'No camera view available. On-site check required.',
+      cameraContext:
+        'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
       sensorBasis: 'Synthetic distress score: 84% at AUD-001 (Simulated scenario)',
       activityTrail: [
         { time: now, action: 'Simulated distress sound alert generated', actor: 'Demo Scenario (Simulated)' },
@@ -419,7 +420,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sourceDevice: 'AUD-001 · North Entrance (Mounted on AS-101)',
         sensorBasis: 'Simulated distress score: 84% (Not a real audio recording)',
         lightingAction: 'Normal lighting maintained',
-        cameraAvailability: 'No camera view available. On-site check required.',
+        cameraAvailability:
+          'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
       },
     );
   }, [addEvent, upsertSensorIncident]);
@@ -468,7 +470,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sourceMode: 'simulated',
       score: 0.94,
       lightingResponseNote: lightNote,
-      cameraContext: 'No camera view available. On-site check required.',
+      cameraContext: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       sensorBasis: basisText,
       activityTrail: [
         { time: now, action: 'Same-zone sound + movement corroborated within 15s window', actor: 'Spatio-Temporal Fusion Engine' },
@@ -487,7 +489,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sourceDevice: 'LID-002 + AUD-002 · West Loop (AS-104)',
         sensorBasis: basisText,
         lightingAction: lightNote,
-        cameraAvailability: 'No camera view available. On-site check required.',
+        cameraAvailability: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       },
     );
   }, [addEvent, blockedRouteZone, upsertSensorIncident]);
@@ -533,7 +535,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'SIMULATED: Possible distress sound at North Entrance (AS-101). Kept separate from West Loop movement anomaly (different spatial zone).',
       sourceMode: 'simulated',
       score: 0.83,
-      cameraContext: 'No camera view available. On-site check required.',
+      cameraContext:
+        'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
       sensorBasis: 'Spatial separation: AS-101 ≠ AS-104 (Not fused)',
       occurrenceCount: 1,
       lastUpdatedEpoch: nowEpoch,
@@ -555,7 +558,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sourceMode: 'simulated',
       score: 0.85,
       lightingResponseNote: lightNote,
-      cameraContext: 'No camera view available. On-site check required.',
+      cameraContext: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       sensorBasis: 'Spatial separation: AS-104 ≠ AS-101 (Not fused)',
       occurrenceCount: 1,
       lastUpdatedEpoch: nowEpoch,
@@ -577,7 +580,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sourceDevice: 'AUD-001 (AS-101) & LID-002 (AS-104)',
         sensorBasis: 'Different spatial zones (North Entrance vs West Loop) — automatic fusion blocked',
         lightingAction: lightNote,
-        cameraAvailability: 'No camera view available. On-site check required.',
+        cameraAvailability: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       },
     );
   }, [addEvent, blockedRouteZone]);
@@ -613,7 +616,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           reason: `RECORDED SAMPLE: ${inf.plain_reason}`,
           sourceMode: 'recorded',
           score: inf.distress_score,
-          cameraContext: 'No camera view available. On-site check required.',
+          cameraContext:
+            'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
           sensorBasis: `YAMNet Recorded WAV (${inf.sample_id}): ${topSummary}`,
           activityTrail: [
             {
@@ -635,7 +639,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sourceDevice: `AUD-001 · Recorded WAV (${inf.sample_id})`,
             sensorBasis: `Top AudioSet classes: ${topSummary}`,
             lightingAction: 'Normal pathway lighting maintained',
-            cameraAvailability: 'No camera view available. On-site check required.',
+            cameraAvailability:
+              'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
           },
         );
       } else {
@@ -649,7 +654,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sourceDevice: `AUD-001 · Recorded WAV (${inf.sample_id})`,
             sensorBasis: `Top AudioSet classes: ${topSummary}`,
             lightingAction: 'No emergency lighting needed (benign sound)',
-            cameraAvailability: 'No camera view available. On-site check required.',
+            cameraAvailability:
+              'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
           },
         );
       }
@@ -690,7 +696,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           reason: `LIVE INPUT: ${inf.plain_reason}`,
           sourceMode: 'live',
           score: inf.distress_score,
-          cameraContext: 'No camera view available. On-site check required.',
+          cameraContext:
+            'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
           sensorBasis: `Live Browser Microphone (16kHz WAV): ${topSummary}`,
           activityTrail: [
             {
@@ -712,7 +719,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sourceDevice: 'Live Browser Microphone (16kHz PCM WAV)',
             sensorBasis: `Top AudioSet classes: ${topSummary}`,
             lightingAction: 'Normal pathway lighting maintained',
-            cameraAvailability: 'No camera view available. On-site check required.',
+            cameraAvailability:
+              'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
           },
         );
       } else {
@@ -725,7 +733,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sourceDevice: 'Live Browser Microphone (16kHz PCM WAV)',
             sensorBasis: `Top AudioSet classes: ${topSummary}`,
             lightingAction: 'Normal baseline maintained',
-            cameraAvailability: 'No camera view available. On-site check required.',
+            cameraAvailability:
+              'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.',
           },
         );
       }

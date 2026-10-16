@@ -1,7 +1,9 @@
 // Park Overview — default guard console view.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Scene from '../components/Park3D/Scene';
+import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
 import StatusLabel from '../components/StatusLabel';
 import AlertCard from '../components/AlertCard';
 import { POLES } from '../data/parkData';
@@ -78,6 +80,7 @@ function SummaryStats({
 
 type SelectionTarget =
   | { type: 'pole'; poleId: string }
+  | { type: 'camera'; cameraId: string }
   | { type: 'person'; dotIndex: number; approxLocation: string; stationary: boolean }
   | { type: 'guard'; guardId: string };
 
@@ -133,6 +136,10 @@ export default function ParkOverview() {
     poleId: selectedPoleId,
   });
 
+  // Independent Hybrid Map Layer Toggles (Requirement M18)
+  const [showCCTV, setShowCCTV] = useState<boolean>(true);
+  const [showGaps, setShowGaps] = useState<boolean>(true);
+
   const [activeTab, setActiveTab] = useState<DemoTab>('lidar');
   const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
   const [analyzingSampleId, setAnalyzingSampleId] = useState<string | null>(null);
@@ -152,7 +159,6 @@ export default function ParkOverview() {
     };
   }, []);
 
-  // Play real .wav recording inline from backend
   const handleTogglePlaySample = (sampleId: string) => {
     setErrorBanner(null);
     if (playingSampleId === sampleId && audioPlayerRef.current) {
@@ -189,7 +195,6 @@ export default function ParkOverview() {
     });
   };
 
-  // Run YAMNet on recorded .wav file (and play audio simultaneously so judge hears it)
   const handleRunRecordedSample = async (sampleId: string) => {
     setErrorBanner(null);
     setAnalyzingSampleId(sampleId);
@@ -209,7 +214,6 @@ export default function ParkOverview() {
     }
   };
 
-  // Capture 3 seconds of live microphone audio as 16kHz PCM WAV and send to YAMNet
   const handleRecordLiveMic = async () => {
     setErrorBanner(null);
     setIsRecordingMic(true);
@@ -240,6 +244,10 @@ export default function ParkOverview() {
     setSelection({ type: 'pole', poleId: id });
   };
 
+  const handleSelectCamera = (cameraId: string) => {
+    setSelection({ type: 'camera', cameraId });
+  };
+
   const handleSelectAnonymousDot = (dotIndex: number) => {
     const locations = [
       'West Loop · Near Pole AS-104',
@@ -264,6 +272,10 @@ export default function ParkOverview() {
   };
 
   const selectedPole = POLES.find((p) => p.id === selectedPoleId);
+  const selectedCamera =
+    selection.type === 'camera'
+      ? CCTV_CAMERAS.find((c) => c.id === selection.cameraId) || CCTV_CAMERAS[0]
+      : CCTV_CAMERAS[0];
   const selectedBrightness = lighting[selectedPoleId] ?? 70;
   const isSelectedOffline = offlinePoleId === selectedPoleId;
   const isSelectedAlert = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId;
@@ -275,7 +287,7 @@ export default function ParkOverview() {
       <div className="overview-top">
         <div className="overview-heading">
           <h1>Park Overview</h1>
-          <p>See park activity, lighting and alerts.</p>
+          <p>See park activity, hybrid coverage layers, lighting, and alerts.</p>
         </div>
         <SummaryStats
           needsAttention={needsAttentionCount}
@@ -288,8 +300,8 @@ export default function ParkOverview() {
       <div className="workspace">
         {/* ── 3D Viewer ── */}
         <div className="viewer">
-          {/* Controls overlay (top-left) */}
-          <div className="viewer-controls" role="group" aria-label="3D viewer controls">
+          {/* Controls & Layer Toggles overlay (top-left) */}
+          <div className="viewer-controls" role="group" aria-label="3D viewer and layer controls">
             <label className="toggle-label">
               <input
                 type="checkbox"
@@ -299,15 +311,32 @@ export default function ParkOverview() {
               />
               Night mode
             </label>
-            <label className="toggle-label">
+            <label className="toggle-label" title="Show estimated CCTV camera viewing cones">
+              <input
+                type="checkbox"
+                checked={showCCTV}
+                onChange={(e) => setShowCCTV(e.target.checked)}
+                id="cctv-layer-toggle"
+              />
+              📹 CCTV cones
+            </label>
+            <label className="toggle-label" title="Show illustrative LiDAR and Audio sensor circles">
               <input
                 type="checkbox"
                 checked={showCoverage}
                 onChange={(e) => setShowCoverage(e.target.checked)}
                 id="coverage-toggle"
               />
-              Show coverage&nbsp;
-              <span style={{ fontSize: '11px', opacity: 0.65 }}>(illustrative)</span>
+              📡 LiDAR/Audio rings
+            </label>
+            <label className="toggle-label" title="Highlight unmonitored blind spots">
+              <input
+                type="checkbox"
+                checked={showGaps}
+                onChange={(e) => setShowGaps(e.target.checked)}
+                id="gaps-layer-toggle"
+              />
+              ⚠️ Coverage gaps
             </label>
             <label className="toggle-label">
               <input
@@ -320,9 +349,19 @@ export default function ParkOverview() {
             </label>
           </div>
 
-          {/* Reset View (top-right) */}
+          {/* Reset View (top-right) — High contrast in both Day and Night modes */}
           <div className="viewer-controls-right">
-            <button id="reset-view-btn" className="btn btn-ghost btn-sm" onClick={resetView}>
+            <button
+              id="reset-view-btn"
+              className="btn btn-sm"
+              style={{
+                background: 'rgba(10, 16, 29, 0.84)',
+                color: '#f8fafc',
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                backdropFilter: 'blur(8px)',
+              }}
+              onClick={resetView}
+            >
               ↺ Reset View
             </button>
           </div>
@@ -407,9 +446,13 @@ export default function ParkOverview() {
               onSelectPole={handleSelectPole}
               onSelectAnonymousDot={handleSelectAnonymousDot}
               onSelectGuard={handleSelectGuard}
+              selectedCameraId={selection.type === 'camera' ? selection.cameraId : null}
+              onSelectCamera={handleSelectCamera}
               lighting={lighting}
               lightingNote={lightingNote}
               showCoverage={showCoverage}
+              showCCTV={showCCTV}
+              showGaps={showGaps}
               paused={paused}
               nightMode={nightMode}
               fallPoleId={fallPoleId}
@@ -423,7 +466,7 @@ export default function ParkOverview() {
               resetCounter={resetCounter}
             />
             <span className="canvas-stamp" aria-hidden="true">
-              All positions and lighting values are simulated — not real sensor data
+              All positions, viewing cones, and lighting values are simulated/estimated — not real sensor streams
             </span>
           </div>
 
@@ -431,22 +474,23 @@ export default function ParkOverview() {
           <div className="viewer-legend" role="list" aria-label="Map legend">
             <div className="legend-item" role="listitem">
               <span className="legend-dot teal" aria-hidden="true" />
-              Person Detected (LiDAR)
+              Person (LiDAR)
             </div>
             <div className="legend-item" role="listitem">
-              <span className="legend-shield-icon" aria-hidden="true">
-                <svg
-                  width="13"
-                  height="15"
-                  viewBox="0 0 24 28"
-                  fill="#0284c7"
-                  stroke="#38bdf8"
-                  strokeWidth="2.2"
-                >
-                  <path d="M12 1L3 5V13C3 19.5 7.5 25.5 12 27C16.5 25.5 21 19.5 21 13V5L12 1Z" />
-                </svg>
-              </span>
-              Security Guard (Reported Location)
+              <span
+                className="legend-dot"
+                style={{ background: '#38bdf8' }}
+                aria-hidden="true"
+              />
+              📹 CCTV Cone (Estimated)
+            </div>
+            <div className="legend-item" role="listitem">
+              <span
+                className="legend-dot"
+                style={{ background: '#a78bfa' }}
+                aria-hidden="true"
+              />
+              ⚠️ Coverage Gap
             </div>
             <div className="legend-item" role="listitem">
               <span className="legend-dot amber" aria-hidden="true" />
@@ -484,6 +528,14 @@ export default function ParkOverview() {
                 Pole ({selectedPoleId})
               </button>
               <button
+                className={`entity-switch-btn ${selection.type === 'camera' ? 'active' : ''}`}
+                onClick={() => setSelection({ type: 'camera', cameraId: 'CAM-01' })}
+                role="tab"
+                aria-selected={selection.type === 'camera'}
+              >
+                📹 CCTV
+              </button>
+              <button
                 className={`entity-switch-btn ${selection.type === 'person' ? 'active' : ''}`}
                 onClick={() => handleSelectAnonymousDot(0)}
                 role="tab"
@@ -498,11 +550,12 @@ export default function ParkOverview() {
                   role="tab"
                   aria-selected={selection.type === 'guard'}
                 >
-                  Guard Location
+                  Guard
                 </button>
               )}
             </div>
 
+            {/* State 1: Pole Selected */}
             {selection.type === 'pole' && (
               <>
                 <div
@@ -565,12 +618,16 @@ export default function ParkOverview() {
                           : 'Normal (demo)'}
                       </span>
                     </div>
-                    {isSelectedAlert && (
-                      <div className="metric-row">
-                        <span className="metric-label">Active Alert</span>
-                        <StatusLabel level="needs_review" />
-                      </div>
-                    )}
+                    <div className="metric-row">
+                      <span className="metric-label">CCTV Coverage</span>
+                      <span className="metric-value" style={{ fontSize: '12px' }}>
+                        {selectedPole.id === 'AS-101'
+                          ? 'Covered by CAM-01 (Inventory)'
+                          : selectedPole.id === 'AS-105'
+                          ? 'Covered by CAM-02 (Inventory)'
+                          : 'No CCTV coverage (LiDAR/Audio zone)'}
+                      </span>
+                    </div>
 
                     {!isSelectedOffline && (
                       <div className="form-group mt-2">
@@ -589,21 +646,97 @@ export default function ParkOverview() {
                       </div>
                     )}
 
-                    {isDark && (
-                      <div className="notice notice-warning mt-2">
-                        Low-light warning — virtual setting only. This is not a measured lux value.
-                      </div>
-                    )}
-                    {isSelectedOffline && (
-                      <div className="notice notice-warning mt-2">
-                        Sensor offline — monitoring may be unavailable in this area.
-                      </div>
-                    )}
+                    {/* Quick Pole Resident SOS QR Link */}
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        paddingTop: '10px',
+                        borderTop: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        Resident QR Portal ({selectedPole.id})
+                      </span>
+                      <Link
+                        to={`/sos?pole=${selectedPole.id}&zone=${selectedPole.zone}`}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '11px', padding: '4px 10px', minHeight: '28px', textDecoration: 'none' }}
+                      >
+                        🆘 Open Pole SOS Page
+                      </Link>
+                    </div>
                   </>
                 )}
               </>
             )}
 
+            {/* State 2: CCTV Camera Inventory Selected */}
+            {selection.type === 'camera' && (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>CCTV Map Inventory</span>
+                  <span className="badge badge-simulated" style={{ fontSize: '10px' }}>
+                    Inventory Only
+                  </span>
+                </div>
+
+                <div className="form-group mb-2">
+                  <label className="form-label" htmlFor="camera-select">
+                    Select Camera Marker
+                  </label>
+                  <select
+                    id="camera-select"
+                    className="form-control"
+                    value={selectedCamera.id}
+                    onChange={(e) => handleSelectCamera(e.target.value)}
+                  >
+                    {CCTV_CAMERAS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.id} · {c.name} ({c.zoneName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="metric-row">
+                  <span className="metric-label">Camera ID</span>
+                  <span className="metric-value">{selectedCamera.id}</span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Monitored Zone</span>
+                  <span className="metric-value">{selectedCamera.zoneName}</span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Integration Status</span>
+                  <span className="metric-value warn" style={{ fontSize: '12px' }}>
+                    Map Inventory Only (No Live Feed)
+                  </span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Viewing Basis</span>
+                  <span className="metric-value" style={{ fontSize: '12px' }}>
+                    {selectedCamera.coverageNote}
+                  </span>
+                </div>
+
+                <div className="notice notice-info mt-2" style={{ fontSize: '12px' }}>
+                  <strong>Honest Camera Boundary:</strong> {selectedCamera.limitations} A viewing cone on the map is an estimate and does not guarantee identification or supply live video without authorized stream integration.
+                </div>
+              </>
+            )}
+
+            {/* State 3: Person (LiDAR) Selected */}
             {selection.type === 'person' && (
               <>
                 <div
@@ -661,6 +794,7 @@ export default function ParkOverview() {
               </>
             )}
 
+            {/* State 4: Guard Selected */}
             {selection.type === 'guard' && (
               <>
                 {(() => {
@@ -742,7 +876,6 @@ export default function ParkOverview() {
               </button>
             </div>
 
-            {/* 3-Tab Switcher */}
             <div
               className="entity-switch-row"
               role="tablist"
@@ -787,7 +920,7 @@ export default function ParkOverview() {
               </div>
             )}
 
-            {/* ── TAB 1: LiDAR Fall vs. Lookalike Immunity ── */}
+            {/* TAB 1: LiDAR Fall vs. Lookalike Immunity */}
             {activeTab === 'lidar' && (
               <div className="scenario-section">
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
@@ -860,7 +993,6 @@ export default function ParkOverview() {
                   <span className="scenario-pill pill-cov">2 Separate Cases</span>
                 </button>
 
-                {/* Live LiDAR Kinematic Readout Card */}
                 {latestLidarEval && (
                   <div
                     style={{
@@ -919,7 +1051,7 @@ export default function ParkOverview() {
               </div>
             )}
 
-            {/* ── TAB 2: Sound AI (YAMNet Recorded WAV & Live Mic) ── */}
+            {/* TAB 2: Sound AI (YAMNet Recorded WAV & Live Mic) */}
             {activeTab === 'sound' && (
               <div className="scenario-section">
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
@@ -992,7 +1124,6 @@ export default function ParkOverview() {
                     );
                   })}
 
-                  {/* 3-Second Live Microphone Recording Button */}
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm btn-full"
@@ -1014,7 +1145,6 @@ export default function ParkOverview() {
                   </button>
                 </div>
 
-                {/* YAMNet Audio Assessment Result Box */}
                 {latestAudioInference && (
                   <div
                     style={{
@@ -1097,7 +1227,7 @@ export default function ParkOverview() {
               </div>
             )}
 
-            {/* ── TAB 3: Park Environment & Lighting ── */}
+            {/* TAB 3: Park Environment & Lighting */}
             {activeTab === 'env' && (
               <div className="scenario-section">
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
