@@ -1,10 +1,12 @@
- import { useEffect, useRef } from 'react';
+// Main 3D Canvas scene — assembles park geometry, poles, CCTV inventory, coverage gaps, anonymous LiDAR dots, and security guard markers.
+import { useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import ParkGeometry from './ParkGeometry';
 import Pole from './Pole';
 import AnonymousDot from './AnonymousDot';
 import GuardMarker from './GuardMarker';
+import CameraAndGapOverlay from './CameraAndGapOverlay';
 import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState } from '../../types';
 
@@ -13,9 +15,13 @@ interface SceneProps {
   onSelectPole: (id: string) => void;
   onSelectAnonymousDot?: (dotIndex: number) => void;
   onSelectGuard?: (guardId: string) => void;
+  selectedCameraId?: string | null;
+  onSelectCamera?: (cameraId: string) => void;
   lighting: LightingMap;
   lightingNote?: string;
   showCoverage: boolean;
+  showCCTV?: boolean;
+  showGaps?: boolean;
   paused: boolean;
   nightMode: boolean;
   fallPoleId: string | null;
@@ -36,8 +42,12 @@ function World({
   onSelectPole,
   onSelectAnonymousDot,
   onSelectGuard,
+  selectedCameraId = null,
+  onSelectCamera,
   lighting,
   showCoverage,
+  showCCTV = true,
+  showGaps = false,
   paused,
   nightMode,
   fallPoleId,
@@ -62,11 +72,19 @@ function World({
 
       <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} />
 
+      {/* Independent CCTV Camera Inventory & Coverage Gap Overlay */}
+      <CameraAndGapOverlay
+        showCCTV={showCCTV}
+        showGaps={showGaps}
+        selectedCameraId={selectedCameraId}
+        onSelectCamera={onSelectCamera}
+      />
+
       {POLES.map((pole) => (
         <Pole
           key={pole.id}
           data={pole}
-          selected={selectedPoleId === pole.id}
+          selected={selectedPoleId === pole.id && !selectedCameraId}
           onSelect={onSelectPole}
           isAlert={fallPoleId === pole.id}
           isOffline={offlinePoleId === pole.id}
@@ -109,9 +127,13 @@ export default function Scene({
   onSelectPole,
   onSelectAnonymousDot,
   onSelectGuard,
+  selectedCameraId = null,
+  onSelectCamera,
   lighting,
   lightingNote,
   showCoverage,
+  showCCTV = true,
+  showGaps = false,
   paused,
   nightMode,
   fallPoleId,
@@ -152,9 +174,13 @@ export default function Scene({
         onSelectPole={onSelectPole}
         onSelectAnonymousDot={onSelectAnonymousDot}
         onSelectGuard={onSelectGuard}
+        selectedCameraId={selectedCameraId}
+        onSelectCamera={onSelectCamera}
         lighting={lighting}
         lightingNote={lightingNote}
         showCoverage={showCoverage}
+        showCCTV={showCCTV}
+        showGaps={showGaps}
         paused={paused}
         nightMode={nightMode}
         fallPoleId={fallPoleId}
