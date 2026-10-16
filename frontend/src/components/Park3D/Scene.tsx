@@ -65,16 +65,24 @@ function World({
 
   return (
     <>
-      <color attach="background" args={[nightMode ? '#08121e' : '#7baacc']} />
-      <ambientLight intensity={nightMode ? 0.18 : 1.3} />
+      <color attach="background" args={[nightMode ? '#0a1526' : '#7baacc']} />
+      <ambientLight intensity={nightMode ? 0.65 : 1.35} />
       <directionalLight
-        position={[12, 25, 10]}
-        intensity={nightMode ? 0.22 : 2.1}
+        position={[14, 28, 12]}
+        intensity={nightMode ? 0.85 : 2.2}
+        color={nightMode ? '#c7d2fe' : '#fffdf5'}
         castShadow
         shadow-mapSize={[1024, 1024]}
       />
+      <hemisphereLight
+        args={[
+          nightMode ? '#38bdf8' : '#dbeafe',
+          nightMode ? '#0f172a' : '#334155',
+          nightMode ? 0.45 : 0.45,
+        ]}
+      />
 
-      <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} />
+      <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} nightMode={nightMode} />
 
       {/* Independent CCTV Camera Inventory & Coverage Gap Overlay */}
       <CameraAndGapOverlay
@@ -163,7 +171,7 @@ export default function Scene({
 
   return (
     <Canvas
-      camera={{ position: [0, 26, 32], fov: 46 }}
+      camera={{ position: [0, 21, 23], fov: 44 }}
       shadows
       gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
