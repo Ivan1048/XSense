@@ -56,6 +56,7 @@ export interface Incident {
   reason: string;
   sourceMode: SourceMode;
   assignedGuardId?: string;
+  assignedGuardIds?: string[];
   score?: number;
   lightingResponseNote?: string;
   cameraContext?: string;

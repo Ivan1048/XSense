@@ -133,6 +133,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.type === 'SYNC_GUARDS' && Array.isArray(data.guards)) {
         setGuards(data.guards);
       }
+      if (data.type === 'SYNC_DISPATCHED' && Array.isArray(data.dispatchedGuards)) {
+        setDispatchedGuards(data.dispatchedGuards);
+      }
       if (data.type === 'SOS_CREATED' && data.incident) {
         const inc = data.incident as Incident;
         setIncidents((prev) => {
@@ -160,10 +163,11 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const channel = new BroadcastChannel('xsense_state_sync');
     channel.postMessage({ type: 'SYNC_INCIDENTS', incidents });
     channel.postMessage({ type: 'SYNC_GUARDS', guards });
+    channel.postMessage({ type: 'SYNC_DISPATCHED', dispatchedGuards });
     return () => {
       channel.close();
     };
-  }, [incidents, guards]);
+  }, [incidents, guards, dispatchedGuards]);
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
@@ -1041,40 +1045,54 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!guard || guard.availability === 'busy') return false;
 
       const targetIncident = incidents.find((i) => i.id === id);
-      const targetPole = targetIncident ? POLES.find((p) => p.id === targetIncident.poleId) : undefined;
+      const targetPole = targetIncident
+        ? POLES.find((p) => p.id === targetIncident.poleId)
+        : undefined;
       const targetPos: [number, number] = targetPole ? targetPole.position : [0, 0];
 
       setIncidents((prev) =>
         prev.map((inc) => {
           if (inc.id !== id) return inc;
+          const existingIds = inc.assignedGuardIds ?? (inc.assignedGuardId ? [inc.assignedGuardId] : []);
+          const nextIds = existingIds.includes(guardId) ? existingIds : [...existingIds, guardId];
           return {
             ...inc,
-            status: 'assigned',
-            assignedGuardId: guardId,
+            status: inc.status === 'investigating' ? 'investigating' : 'assigned',
+            assignedGuardId: inc.assignedGuardId || guardId,
+            assignedGuardIds: nextIds,
             activityTrail: [
               ...inc.activityTrail,
-              { time: now, action: `Dispatched to ${guard.displayName} (${guard.role})`, actor: guard.displayName },
+              {
+                time: now,
+                action: `Dispatched ${guard.displayName} (${guard.role})${
+                  existingIds.length > 0 ? ' as additional responder' : ''
+                }`,
+                actor: guard.displayName,
+              },
             ],
           };
         }),
       );
 
+      // Keep all existing dispatched guards on the 3D map; only replace if the same guardId was returning
       setDispatchedGuards((prev) => {
-        const remaining = prev.filter((dg) => dg.incidentId !== id && dg.guardId !== guardId);
+        const remaining = prev.filter((dg) => dg.guardId !== guardId);
         return [
           ...remaining,
           {
             guardId,
             guardName: guard.displayName,
             incidentId: id,
-            targetPoleId: targetIncident?.poleId || '',
+            targetPoleId: targetIncident?.poleId || 'AS-103',
             targetPos,
             status: 'traveling',
           },
         ];
       });
 
-      setGuards((prev) => prev.map((g) => (g.id === guardId ? { ...g, availability: 'busy' } : g)));
+      setGuards((prev) =>
+        prev.map((g) => (g.id === guardId ? { ...g, availability: 'busy' } : g)),
+      );
       return true;
     },
     [guards, incidents],
@@ -1086,8 +1104,12 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIncidents((prev) =>
         prev.map((inc) => {
           if (inc.id !== id) return inc;
-          const guard = guards.find((g) => g.id === inc.assignedGuardId);
-          const actorName = guard?.displayName || 'Responding Guard';
+          const ids = inc.assignedGuardIds ?? (inc.assignedGuardId ? [inc.assignedGuardId] : []);
+          const names = ids
+            .map((gid) => guards.find((g) => g.id === gid)?.displayName)
+            .filter(Boolean)
+            .join(', ');
+          const actorName = names || 'Responding Guard';
           return {
             ...inc,
             status: 'investigating',
@@ -1159,13 +1181,13 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resolveIncident = useCallback(
     (id: string, outcomeNote: string) => {
       const now = new Date().toLocaleTimeString();
-      let assignedId: string | undefined;
+      let releasedIds: string[] = [];
       let closedInc: Incident | undefined;
 
       setIncidents((prev) => {
         const next = prev.map((inc) => {
           if (inc.id !== id) return inc;
-          assignedId = inc.assignedGuardId;
+          releasedIds = inc.assignedGuardIds ?? (inc.assignedGuardId ? [inc.assignedGuardId] : []);
           closedInc = {
             ...inc,
             status: 'resolved',
@@ -1184,9 +1206,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prev.map((dg) => (dg.incidentId === id ? { ...dg, status: 'returning' } : dg)),
       );
 
-      if (assignedId) {
+      if (releasedIds.length > 0) {
         setGuards((prev) =>
-          prev.map((g) => (g.id === assignedId ? { ...g, availability: 'available' } : g)),
+          prev.map((g) => (releasedIds.includes(g.id) ? { ...g, availability: 'available' } : g)),
         );
       }
 
@@ -1198,13 +1220,13 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const markFalseAlarm = useCallback(
     (id: string, reasonNote: string) => {
       const now = new Date().toLocaleTimeString();
-      let assignedId: string | undefined;
+      let releasedIds: string[] = [];
       let closedInc: Incident | undefined;
 
       setIncidents((prev) => {
         const next = prev.map((inc) => {
           if (inc.id !== id) return inc;
-          assignedId = inc.assignedGuardId;
+          releasedIds = inc.assignedGuardIds ?? (inc.assignedGuardId ? [inc.assignedGuardId] : []);
           closedInc = {
             ...inc,
             status: 'false_alarm',
@@ -1223,9 +1245,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prev.map((dg) => (dg.incidentId === id ? { ...dg, status: 'returning' } : dg)),
       );
 
-      if (assignedId) {
+      if (releasedIds.length > 0) {
         setGuards((prev) =>
-          prev.map((g) => (g.id === assignedId ? { ...g, availability: 'available' } : g)),
+          prev.map((g) => (releasedIds.includes(g.id) ? { ...g, availability: 'available' } : g)),
         );
       }
 

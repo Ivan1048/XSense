@@ -60,13 +60,15 @@ export default function Incidents() {
 
   const selectedIncident =
     incidents.find((i) => i.id === selectedIncidentId) || filteredIncidents[0] || null;
-  const assignedGuard = guards.find((g) => g.id === selectedIncident?.assignedGuardId);
+  const assignedIds =
+    selectedIncident?.assignedGuardIds ??
+    (selectedIncident?.assignedGuardId ? [selectedIncident.assignedGuardId] : []);
+  const assignedGuardsList = guards.filter((g) => assignedIds.includes(g.id));
   const availableGuardsCount = guards.filter((g) => g.availability === 'available').length;
   const selectedCandidateGuard = guards.find((g) => g.id === selectedGuardToAssign);
   const canDispatchCandidate =
     Boolean(selectedCandidateGuard) &&
-    selectedCandidateGuard?.availability === 'available' &&
-    !selectedIncident?.assignedGuardId;
+    selectedCandidateGuard?.availability === 'available';
 
   const handleResolveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,11 +252,11 @@ export default function Incidents() {
                         <div
                           className="detail-item-value"
                           style={{
-                            color: assignedGuard ? 'var(--accent)' : 'var(--text-muted)',
+                            color: assignedGuardsList.length > 0 ? 'var(--accent)' : 'var(--text-muted)',
                           }}
                         >
-                          {assignedGuard
-                            ? `${assignedGuard.displayName} (${assignedGuard.role})`
+                          {assignedGuardsList.length > 0
+                            ? assignedGuardsList.map((g) => `${g.displayName} (${g.role})`).join(', ')
                             : 'Unassigned'}
                         </div>
                       </div>
@@ -338,24 +340,29 @@ export default function Incidents() {
                         </div>
 
                         {/* Guard Assignment Section */}
-                        {selectedIncident.assignedGuardId ? (
+                        {assignedGuardsList.length > 0 && (
                           <div
                             className="notice notice-info"
                             style={{ marginTop: '12px', fontSize: '13px' }}
                           >
-                            <strong>Assigned Responder:</strong>{' '}
-                            {assignedGuard?.displayName || selectedIncident.assignedGuardId}{' '}
+                            <strong>Assigned Responder(s):</strong>{' '}
+                            {assignedGuardsList.map((g) => `${g.displayName} (${g.role})`).join(', ')}{' '}
                             {selectedIncident.status === 'investigating'
-                              ? 'is currently on scene investigating.'
-                              : 'has been dispatched and is en route. Click "Mark Officer Arrived on Scene" once they reach the location.'}
+                              ? 'are currently on scene investigating.'
+                              : 'have been dispatched. Click "Mark Officer Arrived on Scene" once they reach the location.'}
                           </div>
-                        ) : (
-                          <div className="guard-assign-row">
+                        )}
+
+                        {(availableGuardsCount > 0 || assignedGuardsList.length === 0) && (
+                          <div
+                            className="guard-assign-row"
+                            style={{ marginTop: assignedGuardsList.length > 0 ? '12px' : '0' }}
+                          >
                             <label
                               htmlFor="guard-select"
                               style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}
                             >
-                              Assign Guard:
+                              {assignedGuardsList.length > 0 ? 'Assign Backup Guard:' : 'Assign Guard:'}
                             </label>
                             <select
                               id="guard-select"
@@ -385,6 +392,8 @@ export default function Incidents() {
                             >
                               {availableGuardsCount === 0
                                 ? 'All Guards Busy'
+                                : assignedGuardsList.length > 0
+                                ? 'Dispatch Backup Guard'
                                 : 'Dispatch Guard'}
                             </button>
                           </div>

@@ -552,7 +552,7 @@ export default function ParkOverview() {
                   role="tab"
                   aria-selected={selection.type === 'guard'}
                 >
-                  Guard
+                  Guard ({dispatchedGuards.length})
                 </button>
               )}
             </div>
@@ -890,6 +890,26 @@ export default function ParkOverview() {
                           Guard Location (Simulated)
                         </span>
                       </div>
+
+                      {dispatchedGuards.length > 1 && (
+                        <div className="form-group mb-2">
+                          <label className="form-label" htmlFor="dispatched-guard-select">
+                            Select Dispatched Officer
+                          </label>
+                          <select
+                            id="dispatched-guard-select"
+                            className="form-control"
+                            value={selection.guardId}
+                            onChange={(e) => handleSelectGuard(e.target.value)}
+                          >
+                            {dispatchedGuards.map((dg) => (
+                              <option key={dg.guardId} value={dg.guardId}>
+                                {dg.guardName} ({dg.status})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div className="metric-row">
                         <span className="metric-label">Officer</span>
                         <span className="metric-value" style={{ color: '#38bdf8', fontWeight: 700 }}>

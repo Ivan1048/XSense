@@ -1,5 +1,5 @@
 // Security guard marker — represents a reported location from a separate guard tracking system.
-// Completely distinct from anonymous LiDAR detections: uses a floating blue shield icon, not a circular dot.
+// Each guard ID (G01, G02, G03) has a distinct tactical standing offset and badge elevation so multiple guards never overlap.
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -14,10 +14,17 @@ interface GuardMarkerProps {
   onFinishedReturn?: () => void;
 }
 
-const BASE_POS: [number, number] = [0, -18]; // Security Station at North Entrance
+const GUARD_FORMATION: Record<
+  string,
+  { base: [number, number]; offset: [number, number]; htmlY: number; stemH: number }
+> = {
+  G01: { base: [-2.2, -18], offset: [-2.2, -1.5], htmlY: 2.85, stemH: 2.3 },
+  G02: { base: [0.0, -18], offset: [2.2, -1.5], htmlY: 2.35, stemH: 1.85 },
+  G03: { base: [2.2, -18], offset: [-2.2, 1.9], htmlY: 3.35, stemH: 2.8 },
+};
 
 export default function GuardMarker({
-  guardId,
+  guardId = 'G01',
   guardName,
   targetPos,
   status,
@@ -28,12 +35,12 @@ export default function GuardMarker({
   const diamondRef = useRef<THREE.Mesh>(null);
   const progressRef = useRef<number>(status === 'arrived' ? 1 : 0);
 
-  // Offset destination so the guard stands beside the pole and clear of any fallen person
-  const destX = targetPos[0] - 1.8;
-  const destZ = targetPos[1] - 1.4;
+  const formation = GUARD_FORMATION[guardId] || GUARD_FORMATION.G01;
+  const [baseX, baseZ] = formation.base;
+  const destX = targetPos[0] + formation.offset[0];
+  const destZ = targetPos[1] + formation.offset[1];
 
   useFrame((state, delta) => {
-    // Transit speed: traverses the park pathway over ~4.5 seconds
     const speed = 0.22;
 
     if (status === 'traveling') {
@@ -48,17 +55,15 @@ export default function GuardMarker({
     }
 
     const t = progressRef.current;
-    // Smooth cosine ease along path
     const easeT = 0.5 - 0.5 * Math.cos(t * Math.PI);
 
-    const currentX = BASE_POS[0] + (destX - BASE_POS[0]) * easeT;
-    const currentZ = BASE_POS[1] + (destZ - BASE_POS[1]) * easeT;
+    const currentX = baseX + (destX - baseX) * easeT;
+    const currentZ = baseZ + (destZ - baseZ) * easeT;
 
     if (groupRef.current) {
       groupRef.current.position.set(currentX, 0, currentZ);
     }
 
-    // Subtle gentle rotation of the ground locator diamond
     if (diamondRef.current) {
       diamondRef.current.rotation.y = state.clock.getElapsedTime() * 1.2;
     }
@@ -72,8 +77,8 @@ export default function GuardMarker({
       : 'En Route';
 
   return (
-    <group ref={groupRef} position={[BASE_POS[0], 0, BASE_POS[1]]}>
-      {/* Ground GPS waypoint indicator (tactical diamond, not a round LiDAR sphere) */}
+    <group ref={groupRef} position={[baseX, 0, baseZ]}>
+      {/* Ground GPS waypoint indicator */}
       <mesh
         ref={diamondRef}
         position={[0, 0.08, 0]}
@@ -91,14 +96,14 @@ export default function GuardMarker({
         />
       </mesh>
 
-      {/* Slender vertical telemetry stem linking ground coordinate to the floating shield */}
-      <mesh position={[0, 1.2, 0]}>
-        <cylinderGeometry args={[0.02, 0.02, 2.2, 8]} />
+      {/* Vertical telemetry stem */}
+      <mesh position={[0, formation.stemH / 2 + 0.1, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, formation.stemH, 8]} />
         <meshBasicMaterial color="#38bdf8" transparent opacity={0.65} />
       </mesh>
 
-      {/* Floating Blue Shield Icon — clearly distinct from LiDAR dots */}
-      <Html position={[0, 2.7, 0]} center distanceFactor={26}>
+      {/* Floating Blue Shield Icon at staggered height */}
+      <Html position={[0, formation.htmlY, 0]} center distanceFactor={26}>
         <button
           className="guard-shield-btn"
           style={{ padding: '3px 8px', gap: '6px' }}
@@ -110,8 +115,8 @@ export default function GuardMarker({
         >
           <div className="guard-shield-icon-wrap" aria-hidden="true">
             <svg
-              width="22"
-              height="26"
+              width="20"
+              height="24"
               viewBox="0 0 24 28"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
