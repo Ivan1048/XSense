@@ -47,6 +47,7 @@ interface ParkContextType {
   paused: boolean;
   setPaused: React.Dispatch<React.SetStateAction<boolean>>;
   fallPoleId: string | null;
+  sosPoleId: string | null;
   isLookalikeStop: boolean;
   offlinePoleId: string | null;
   acousticPoleId: string | null;
@@ -105,6 +106,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showCoverage, setShowCoverage] = useState<boolean>(false);
   const [paused, setPaused] = useState<boolean>(false);
   const [fallPoleId, setFallPoleId] = useState<string | null>(null);
+  const [sosPoleId, setSosPoleId] = useState<string | null>(null);
   const [isLookalikeStop, setIsLookalikeStop] = useState<boolean>(false);
   const [offlinePoleId, setOfflinePoleId] = useState<string | null>(null);
   const [acousticPoleId, setAcousticPoleId] = useState<string | null>(null);
@@ -132,11 +134,18 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setGuards(data.guards);
       }
       if (data.type === 'SOS_CREATED' && data.incident) {
+        const inc = data.incident as Incident;
         setIncidents((prev) => {
-          if (prev.some((i) => i.id === data.incident.id)) return prev;
-          return [data.incident, ...prev];
+          if (prev.some((i) => i.id === inc.id)) return prev;
+          return [inc, ...prev];
         });
-        setSelectedIncidentId(data.incident.id);
+        setSelectedIncidentId(inc.id);
+        if (inc.poleId && inc.poleId !== 'N/A') {
+          setSosPoleId(inc.poleId);
+          setSelectedPoleId(inc.poleId);
+          setLighting((prev) => ({ ...prev, [inc.poleId]: 100 }));
+          setLightingNote(`Nearby Lights On — SOS pole ${inc.poleId} illuminated to 100%.`);
+        }
       }
     };
 
@@ -896,6 +905,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLighting(initialLighting());
     setLightingNote('');
     setFallPoleId(null);
+    setSosPoleId(null);
     setIsLookalikeStop(false);
     setOfflinePoleId(null);
     setAcousticPoleId(null);
@@ -917,27 +927,83 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (sosData: { zoneId?: string; zoneName?: string; poleId?: string; locationShared: boolean }): string => {
       const incidentId = `SOS-${Date.now().toString().slice(-4)}`;
       const now = new Date().toLocaleTimeString();
+
+      const ZONE_TO_POLE: Record<string, string> = {
+        north_entrance: 'AS-101',
+        lakeside_path: 'AS-102',
+        central_path: 'AS-103',
+        west_path: 'AS-104',
+        east_exit: 'AS-105',
+      };
+
+      const resolvedPoleId =
+        (sosData.poleId && POLES.some((p) => p.id === sosData.poleId) ? sosData.poleId : undefined) ||
+        (sosData.zoneId ? ZONE_TO_POLE[sosData.zoneId] : undefined) ||
+        'AS-103';
+
+      const matchedPole = POLES.find((p) => p.id === resolvedPoleId);
+      const resolvedZoneId = sosData.zoneId || matchedPole?.zone || 'central_path';
       const zoneName =
         sosData.zoneName ||
-        (sosData.zoneId ? ZONES.find((z) => z.id === sosData.zoneId)?.name : 'General Park Area') ||
-        'Unknown Location';
+        ZONES.find((z) => z.id === resolvedZoneId)?.name ||
+        matchedPole?.name ||
+        'Central Path';
+
+      // Trigger 3D SOS visual state and 100% emergency lighting on the target pole
+      setSosPoleId(resolvedPoleId);
+      setSelectedPoleId(resolvedPoleId);
+      setLighting((prev) => ({ ...prev, [resolvedPoleId]: 100 }));
+      const lightNote =
+        blockedRouteZone === 'central_path'
+          ? 'Nearby lights on — route not verified.'
+          : `Nearby Lights On — SOS pole ${resolvedPoleId} illuminated to 100%.`;
+      setLightingNote(lightNote);
 
       const newIncident: Incident = {
         id: incidentId,
         createdAt: now,
-        zoneId: sosData.zoneId || 'unknown',
+        zoneId: resolvedZoneId,
         zoneName,
-        poleId: sosData.poleId || 'N/A',
+        poleId: resolvedPoleId,
         type: 'resident_sos',
         displayType: 'Resident SOS Call',
         priority: 'urgent',
         status: 'open',
-        reason: `SIMULATED: Resident triggered emergency request via QR portal (${sosData.locationShared ? 'Location Shared' : 'General Request'}).`,
+        reason: `SIMULATED: Resident triggered emergency SOS request at ${zoneName} (${resolvedPoleId}) (${
+          sosData.locationShared ? 'Location Shared' : 'Zone Selected'
+        }).`,
         sourceMode: 'simulated',
-        activityTrail: [{ time: now, action: `SOS request received from resident (${zoneName})`, actor: 'Resident Portal' }],
+        lightingResponseNote: lightNote,
+        cameraContext:
+          resolvedPoleId === 'AS-101'
+            ? 'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected.'
+            : resolvedPoleId === 'AS-105'
+            ? 'CAM-02 (East Exit CCTV) covers this zone — Inventory marker only; live stream not connected.'
+            : 'No camera view available in this zone. Immediate on-site guard response required.',
+        sensorBasis: `Direct Resident Web SOS trigger at ${resolvedPoleId} (${zoneName}) — bypasses AI gate`,
+        occurrenceCount: 1,
+        lastUpdatedEpoch: Date.now(),
+        activityTrail: [
+          { time: now, action: `Urgent SOS request received from resident at ${zoneName} (${resolvedPoleId})`, actor: 'Resident SOS Portal' },
+          { time: now, action: lightNote, actor: 'Safety Lighting Response' },
+        ],
       };
 
       setIncidents((prev) => [newIncident, ...prev]);
+      setSelectedIncidentId(incidentId);
+
+      addEvent(
+        `🚨 Resident SOS — ${zoneName} · ${resolvedPoleId}`,
+        `SIMULATED: Urgent resident help request at ${zoneName} (${resolvedPoleId}). Resident marker highlighted in 3D and local light boosted to 100%.`,
+        'urgent',
+        resolvedPoleId,
+        {
+          sourceDevice: `Resident Web SOS Portal · ${resolvedPoleId}`,
+          sensorBasis: 'Direct resident emergency trigger (bypasses AI validation gate)',
+          lightingAction: lightNote,
+          cameraAvailability: newIncident.cameraContext,
+        },
+      );
 
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         const ch = new BroadcastChannel('xsense_state_sync');
@@ -945,18 +1011,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ch.close();
       }
 
-      setSelectedIncidentId(incidentId);
-
-      addEvent(
-        `🚨 Resident SOS — ${zoneName}`,
-        `SIMULATED: Emergency assistance requested at ${zoneName}. Guard response needed immediately.`,
-        'urgent',
-        sosData.poleId,
-      );
-
       return incidentId;
     },
-    [addEvent],
+    [addEvent, blockedRouteZone],
   );
 
   // Incident Lifecycle Transitions
@@ -1054,20 +1111,27 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const now = new Date().toLocaleTimeString();
       let assignedId: string | undefined;
 
-      setIncidents((prev) =>
-        prev.map((inc) => {
+      setIncidents((prev) => {
+        const updated = prev.map((inc) => {
           if (inc.id !== id) return inc;
           assignedId = inc.assignedGuardId;
           return {
             ...inc,
-            status: 'resolved',
+            status: 'resolved' as const,
             activityTrail: [
               ...inc.activityTrail,
               { time: now, action: `Resolved: ${outcomeNote}`, actor: 'Guard Station' },
             ],
           };
-        }),
-      );
+        });
+        const hasOpenSOS = updated.some(
+          (inc) => inc.type === 'resident_sos' && inc.status !== 'resolved' && inc.status !== 'false_alarm',
+        );
+        if (!hasOpenSOS) {
+          setSosPoleId(null);
+        }
+        return updated;
+      });
 
       setDispatchedGuards((prev) =>
         prev.map((dg) => (dg.incidentId === id ? { ...dg, status: 'returning' } : dg)),
@@ -1087,20 +1151,27 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const now = new Date().toLocaleTimeString();
       let assignedId: string | undefined;
 
-      setIncidents((prev) =>
-        prev.map((inc) => {
+      setIncidents((prev) => {
+        const updated = prev.map((inc) => {
           if (inc.id !== id) return inc;
           assignedId = inc.assignedGuardId;
           return {
             ...inc,
-            status: 'false_alarm',
+            status: 'false_alarm' as const,
             activityTrail: [
               ...inc.activityTrail,
               { time: now, action: `Closed as False Alarm: ${reasonNote}`, actor: 'Guard Station' },
             ],
           };
-        }),
-      );
+        });
+        const hasOpenSOS = updated.some(
+          (inc) => inc.type === 'resident_sos' && inc.status !== 'resolved' && inc.status !== 'false_alarm',
+        );
+        if (!hasOpenSOS) {
+          setSosPoleId(null);
+        }
+        return updated;
+      });
 
       setDispatchedGuards((prev) =>
         prev.map((dg) => (dg.incidentId === id ? { ...dg, status: 'returning' } : dg)),
@@ -1160,6 +1231,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     paused,
     setPaused,
     fallPoleId,
+    sosPoleId,
     isLookalikeStop,
     offlinePoleId,
     acousticPoleId,

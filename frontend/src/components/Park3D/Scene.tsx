@@ -25,6 +25,7 @@ interface SceneProps {
   paused: boolean;
   nightMode: boolean;
   fallPoleId: string | null;
+  sosPoleId?: string | null;
   isLookalikeStop?: boolean;
   offlinePoleId: string | null;
   acousticPoleId?: string | null;
@@ -51,6 +52,7 @@ function World({
   paused,
   nightMode,
   fallPoleId,
+  sosPoleId = null,
   isLookalikeStop = false,
   offlinePoleId,
   acousticPoleId,
@@ -59,6 +61,8 @@ function World({
   dispatchedGuards = [],
   onFinishGuardReturn,
 }: WorldProps) {
+  const sosPole = sosPoleId ? POLES.find((p) => p.id === sosPoleId) : undefined;
+
   return (
     <>
       <color attach="background" args={[nightMode ? '#08121e' : '#7baacc']} />
@@ -86,7 +90,7 @@ function World({
           data={pole}
           selected={selectedPoleId === pole.id && !selectedCameraId}
           onSelect={onSelectPole}
-          isAlert={fallPoleId === pole.id}
+          isAlert={fallPoleId === pole.id || sosPoleId === pole.id}
           isOffline={offlinePoleId === pole.id}
           hasAcousticRipple={acousticPoleId === pole.id}
           lightBrightness={offlinePoleId === pole.id ? 0 : (lighting[pole.id] ?? 70)}
@@ -103,6 +107,8 @@ function World({
           stationary={fallPoleId === 'AS-104' && i === 0}
           isCollapsed={fallPoleId === 'AS-104' && i === 0}
           isLookalikeStop={isLookalikeStop && i === 0}
+          isSOS={Boolean(sosPole) && i === 1}
+          sosTargetPos={sosPole ? sosPole.position : null}
           onSelect={() => onSelectAnonymousDot?.(i)}
         />
       ))}
@@ -137,6 +143,7 @@ export default function Scene({
   paused,
   nightMode,
   fallPoleId,
+  sosPoleId = null,
   isLookalikeStop = false,
   offlinePoleId,
   acousticPoleId,
@@ -184,6 +191,7 @@ export default function Scene({
         paused={paused}
         nightMode={nightMode}
         fallPoleId={fallPoleId}
+        sosPoleId={sosPoleId}
         isLookalikeStop={isLookalikeStop}
         offlinePoleId={offlinePoleId}
         acousticPoleId={acousticPoleId}

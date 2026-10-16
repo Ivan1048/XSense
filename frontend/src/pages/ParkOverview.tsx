@@ -100,6 +100,7 @@ export default function ParkOverview() {
     paused,
     setPaused,
     fallPoleId,
+    sosPoleId,
     isLookalikeStop,
     offlinePoleId,
     acousticPoleId,
@@ -278,7 +279,7 @@ export default function ParkOverview() {
       : CCTV_CAMERAS[0];
   const selectedBrightness = lighting[selectedPoleId] ?? 70;
   const isSelectedOffline = offlinePoleId === selectedPoleId;
-  const isSelectedAlert = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId;
+  const isSelectedAlert = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId || sosPoleId === selectedPoleId;
   const isDark = !isSelectedOffline && selectedBrightness < 30;
 
   return (
@@ -456,6 +457,7 @@ export default function ParkOverview() {
               paused={paused}
               nightMode={nightMode}
               fallPoleId={fallPoleId}
+              sosPoleId={sosPoleId}
               isLookalikeStop={isLookalikeStop}
               offlinePoleId={offlinePoleId}
               acousticPoleId={acousticPoleId}

@@ -18,6 +18,8 @@ interface AnonymousDotProps {
   stationary: boolean;
   isLookalikeStop?: boolean;
   isCollapsed?: boolean;
+  isSOS?: boolean;
+  sosTargetPos?: [number, number] | null;
   onSelect?: () => void;
 }
 
@@ -28,15 +30,17 @@ export default function AnonymousDot({
   stationary,
   isLookalikeStop = false,
   isCollapsed = false,
+  isSOS = false,
+  sosTargetPos = null,
   onSelect,
 }: AnonymousDotProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const sosRingRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  const isEmergency = highlight || isCollapsed;
-  const showPostureBox = hovered || isLookalikeStop || isCollapsed;
+  const isEmergency = highlight || isCollapsed || isSOS;
+  const showPostureBox = hovered || isLookalikeStop || isCollapsed || isSOS;
 
-  // Standing centroid y = 0.86m (box height 1.72m); Collapsed fall centroid y = 0.20m (box height 0.34m)
   const targetY = isCollapsed ? 0.20 : 0.86;
   const currentY = useRef(0.86);
 
@@ -46,8 +50,31 @@ export default function AnonymousDot({
     currentY.current = THREE.MathUtils.damp(currentY.current, targetY, 5.0, delta);
     groupRef.current.position.y = currentY.current;
 
-    // When demonstrating Standing Stop or Fall at West Loop (AS-104 is at [-12, 10]),
-    // smoothly position the test dot on the pathway right beside AS-104 so it is clearly visible.
+    if (isSOS && sosRingRef.current) {
+      const pulse = 1 + ((clock.getElapsedTime() * 2.4) % 2.2);
+      sosRingRef.current.scale.set(pulse, pulse, 1);
+      const mat = sosRingRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = Math.max(0, 0.75 - (pulse - 1) / 2.2);
+    }
+
+    // If this dot is representing an active Resident SOS caller, position it right beside the SOS pole
+    if (isSOS && sosTargetPos) {
+      groupRef.current.position.x = THREE.MathUtils.damp(
+        groupRef.current.position.x,
+        sosTargetPos[0] + 1.5,
+        4.5,
+        delta,
+      );
+      groupRef.current.position.z = THREE.MathUtils.damp(
+        groupRef.current.position.z,
+        sosTargetPos[1] + 1.2,
+        4.5,
+        delta,
+      );
+      return;
+    }
+
+    // Standing stop or fall test at West Loop (AS-104)
     if (isLookalikeStop || isCollapsed || stationary) {
       groupRef.current.position.x = THREE.MathUtils.damp(groupRef.current.position.x, -10.2, 4.0, delta);
       groupRef.current.position.z = THREE.MathUtils.damp(groupRef.current.position.z, 9.2, 4.0, delta);
@@ -61,10 +88,10 @@ export default function AnonymousDot({
     groupRef.current.position.z = path.z + Math.sin(t) * path.radius * 0.65;
   });
 
-  const color = isEmergency ? '#ffb759' : '#5ee6da';
-  const emissive = isEmergency ? '#ea580c' : '#0e7490';
-  const wireColor = isEmergency ? '#f59e0b' : '#38bdf8';
-  const sphereSize = isEmergency ? 0.36 : 0.32;
+  const color = isSOS ? '#ef4444' : isEmergency ? '#ffb759' : '#5ee6da';
+  const emissive = isSOS ? '#dc2626' : isEmergency ? '#ea580c' : '#0e7490';
+  const wireColor = isSOS ? '#ef4444' : isEmergency ? '#f59e0b' : '#38bdf8';
+  const sphereSize = isEmergency ? 0.38 : 0.32;
 
   const boxDim: [number, number, number] = isCollapsed
     ? [1.65, 0.34, 0.60]
@@ -95,7 +122,7 @@ export default function AnonymousDot({
         <meshStandardMaterial
           color={color}
           emissive={emissive}
-          emissiveIntensity={isEmergency ? 0.7 : 0.4}
+          emissiveIntensity={isEmergency ? 0.8 : 0.4}
           roughness={0.25}
         />
       </mesh>
@@ -103,7 +130,7 @@ export default function AnonymousDot({
       {showPostureBox && (
         <mesh position={[0, 0, 0]}>
           <boxGeometry args={boxDim} />
-          <meshBasicMaterial transparent opacity={0.10} color={wireColor} />
+          <meshBasicMaterial transparent opacity={0.12} color={wireColor} />
           <Edges threshold={15} color={wireColor} lineWidth={2} />
         </mesh>
       )}
@@ -115,6 +142,18 @@ export default function AnonymousDot({
             color="#f59e0b"
             transparent
             opacity={0.45}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      )}
+
+      {isSOS && (
+        <mesh ref={sosRingRef} position={[0, -0.78, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.7, 1.1, 32]} />
+          <meshBasicMaterial
+            color="#ef4444"
+            transparent
+            opacity={0.7}
             side={THREE.DoubleSide}
           />
         </mesh>
@@ -134,7 +173,9 @@ export default function AnonymousDot({
               fontWeight: 600,
               whiteSpace: 'nowrap',
               pointerEvents: 'none',
-              background: isCollapsed
+              background: isSOS
+                ? 'rgba(185, 28, 28, 0.95)'
+                : isCollapsed
                 ? 'rgba(180, 83, 9, 0.94)'
                 : isLookalikeStop
                 ? 'rgba(15, 23, 42, 0.92)'
@@ -144,7 +185,9 @@ export default function AnonymousDot({
               boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
             }}
           >
-            {isCollapsed
+            {isSOS
+              ? '🆘 Resident SOS · Help Requested Here'
+              : isCollapsed
               ? 'Unusual Movement · Height Collapsed (1.72m → 0.34m)'
               : isLookalikeStop
               ? 'Standing Upright (1.72m) · Stopped Dot = No Alert'
