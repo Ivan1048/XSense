@@ -79,7 +79,9 @@ function SummaryStats({
   );
 }
 
-import type { SelectionTarget } from '../types';
+import type { SelectionTarget, CameraViewMode } from '../types';
+import type { SectorId } from '../data/sectors';
+import { SECTOR_LIST } from '../data/sectors';
 
 type DemoTab = 'lidar' | 'sound' | 'env';
 
@@ -117,6 +119,10 @@ export default function ParkOverview() {
     setSelectedPlannedLidar,
     cameraPose,
     setCameraPose,
+    cameraView,
+    setCameraView,
+    selectedSectorId,
+    setSelectedSectorId,
     overviewSelection: selection,
     setOverviewSelection: setSelection,
     latestAudioInference,
@@ -150,6 +156,29 @@ export default function ParkOverview() {
   const [micCountdown, setMicCountdown] = useState<number>(3);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [sectorFlyTrigger, setSectorFlyTrigger] = useState<number>(0);
+
+  const handleSelectSector = (sectorId: SectorId) => {
+    setSelectedSectorId(sectorId);
+    setSectorFlyTrigger((c) => c + 1);
+
+    const primaryPoleMap: Record<SectorId, string> = {
+      A: 'AS-101',
+      B: 'AS-102',
+      C: 'AS-104',
+      D: 'AS-105',
+    };
+    const poleId = primaryPoleMap[sectorId];
+    if (poleId) {
+      setSelectedPoleId(poleId);
+      setSelection({ type: 'pole', poleId });
+    }
+  };
+
+  const handleSwitchCameraView = (view: CameraViewMode) => {
+    setCameraView(view);
+    setSectorFlyTrigger((c) => c + 1);
+  };
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
@@ -473,10 +502,77 @@ export default function ParkOverview() {
             </div>
           )}
 
+          {/* Tactical Sector Navigation & Camera Presets Bar */}
+          <div className="tactical-sector-bar" role="toolbar" aria-label="Tactical security sectors and camera controls">
+            <div className="tactical-bar-section sector-nav-group" role="tablist" aria-label="Tactical security sectors">
+              <span className="tactical-bar-label">SECTORS:</span>
+              {SECTOR_LIST.map((sector) => {
+                const isActive = selectedSectorId === sector.id;
+                return (
+                  <button
+                    key={sector.id}
+                    type="button"
+                    role="tab"
+                    id={`sector-${sector.id.toLowerCase()}-btn`}
+                    className={`sector-nav-btn ${isActive ? 'active' : ''}`}
+                    onClick={() => handleSelectSector(sector.id)}
+                    title={`${sector.name} — ${sector.title} (${sector.subtitle})`}
+                    aria-selected={isActive}
+                  >
+                    <span className="sector-badge">{sector.id}</span>
+                    <span className="sector-title">{sector.name} · {sector.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="tactical-bar-divider" />
+
+            <div className="tactical-bar-section camera-view-group" role="tablist" aria-label="Camera projection modes">
+              <span className="tactical-bar-label">PROJECTION:</span>
+              <button
+                type="button"
+                role="tab"
+                id="camera-radar-btn"
+                className={`camera-view-btn ${cameraView === 'radar' ? 'active' : ''}`}
+                onClick={() => handleSwitchCameraView('radar')}
+                title="2D Top-Down Radar: Planimetric orthographic overhead tactical view (North oriented upwards)"
+                aria-selected={cameraView === 'radar'}
+              >
+                <svg className="view-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="9" />
+                  <line x1="12" y1="3" x2="12" y2="21" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <circle cx="12" cy="12" r="4" />
+                </svg>
+                <span>2D Top-Down Radar</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="camera-3d-btn"
+                className={`camera-view-btn ${cameraView === '3d' ? 'active' : ''}`}
+                onClick={() => handleSwitchCameraView('3d')}
+                title="3D Overview: Tactical angled perspective camera with full orbital control"
+                aria-selected={cameraView === '3d'}
+              >
+                <svg className="view-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                  <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+                <span>3D Overview</span>
+              </button>
+            </div>
+          </div>
+
           {/* Canvas */}
           <div className="canvas-wrap">
             <Scene
               mapMode={mapMode}
+              cameraView={cameraView}
+              selectedSectorId={selectedSectorId}
+              sectorFlyTrigger={sectorFlyTrigger}
               showDeviceLabels={showDeviceLabels}
               showLidarPlan={showLidarPlan}
               selectedPlannedLidar={selectedPlannedLidar}

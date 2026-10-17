@@ -3,6 +3,7 @@ import type {
   AlertEvent,
   AudioInferenceResult,
   CameraPose,
+  CameraViewMode,
   DispatchedGuardState,
   Guard,
   Incident,
@@ -11,6 +12,7 @@ import type {
   SelectionTarget,
 } from '../types';
 import { DEFAULT_CAMERA_POSE } from '../types';
+import type { SectorId } from '../data/sectors';
 import { POLES, ZONES, GUARDS } from '../data/parkData';
 import { createInitialEvent } from '../data/mockData';
 import {
@@ -74,6 +76,10 @@ interface ParkContextType {
   setSelectedPlannedLidar: React.Dispatch<React.SetStateAction<string>>;
   cameraPose: CameraPose;
   setCameraPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  cameraView: CameraViewMode;
+  setCameraView: React.Dispatch<React.SetStateAction<CameraViewMode>>;
+  selectedSectorId: SectorId | null;
+  setSelectedSectorId: React.Dispatch<React.SetStateAction<SectorId | null>>;
   overviewSelection: SelectionTarget;
   setOverviewSelection: React.Dispatch<React.SetStateAction<SelectionTarget>>;
 
@@ -168,6 +174,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showLidarPlan, setShowLidarPlan] = useState<boolean>(false);
   const [selectedPlannedLidar, setSelectedPlannedLidar] = useState<string>('');
   const [cameraPose, setCameraPose] = useState<CameraPose>(DEFAULT_CAMERA_POSE);
+  const [cameraView, setCameraView] = useState<CameraViewMode>('3d');
+  const [selectedSectorId, setSelectedSectorId] = useState<SectorId | null>(null);
   const [overviewSelection, setOverviewSelection] = useState<SelectionTarget>({
     type: 'pole',
     poleId: 'AS-103',
@@ -258,6 +266,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const resetView = useCallback(() => {
+    setCameraView('3d');
+    setSelectedSectorId(null);
     setCameraPose(DEFAULT_CAMERA_POSE);
     setResetCounter((c) => c + 1);
   }, []);
@@ -936,6 +946,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedPoleId('AS-103');
     setResetCounter((c) => c + 1);
     setCameraPose(DEFAULT_CAMERA_POSE);
+    setCameraView('3d');
+    setSelectedSectorId(null);
     setOverviewSelection({ type: 'pole', poleId: 'AS-103' });
     setMapMode('blueprint');
     setShowCCTV(true);
@@ -1532,6 +1544,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedPlannedLidar,
     cameraPose,
     setCameraPose,
+    cameraView,
+    setCameraView,
+    selectedSectorId,
+    setSelectedSectorId,
     overviewSelection,
     setOverviewSelection,
   };

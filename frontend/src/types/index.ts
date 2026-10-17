@@ -190,14 +190,18 @@ export interface FusionEvaluationResult {
   camera_context: string;
 }
 
+export type CameraViewMode = '3d' | 'radar';
+
 export interface CameraPose {
   position: [number, number, number];
   target: [number, number, number];
+  zoom?: number;
 }
 
 export const DEFAULT_CAMERA_POSE: CameraPose = {
   position: [36, 70, 77],
   target: [0, 0, 0],
+  zoom: 1.0,
 };
 
 export type SelectionTarget =
