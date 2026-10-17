@@ -1364,3 +1364,128 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   align-self: center;
 }
 
+/* ── Tactical Sector Navigation Bar (Package D2) ────────────────────────────── */
+.tactical-sector-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 8px 14px;
+  background: rgba(10, 16, 29, 0.94);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--r-sm);
+  margin: 10px 16px 0 16px;
+  flex-shrink: 0;
+  z-index: 15;
+}
+
+.tactical-bar-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tactical-bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-right: 4px;
+  text-transform: uppercase;
+}
+
+.sector-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  background: rgba(17, 29, 46, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.sector-nav-btn:hover {
+  background: rgba(30, 48, 74, 0.95);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #f1f5f9;
+}
+
+.sector-nav-btn.active {
+  background: rgba(14, 116, 144, 0.38);
+  border-color: #38bdf8;
+  color: #e0f2fe;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
+.sector-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.sector-nav-btn.active .sector-badge {
+  background: #38bdf8;
+  color: #032b43;
+  border-color: #38bdf8;
+}
+
+.tactical-bar-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(148, 163, 184, 0.25);
+  margin: 0 4px;
+}
+
+.camera-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(17, 29, 46, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.camera-view-btn:hover {
+  background: rgba(30, 48, 74, 0.95);
+  border-color: rgba(45, 184, 176, 0.45);
+  color: #f1f5f9;
+}
+
+.camera-view-btn.active {
+  background: rgba(45, 184, 176, 0.32);
+  border-color: #2db8b0;
+  color: #a7f3d0;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(45, 184, 176, 0.4);
+}
+
+.view-icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+
