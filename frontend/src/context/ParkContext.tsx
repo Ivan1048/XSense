@@ -13,6 +13,7 @@ import type {
 } from '../types';
 import { DEFAULT_CAMERA_POSE } from '../types';
 import type { SectorId } from '../data/sectors';
+import { OVERVIEW_PERSPECTIVE_POSE, OVERVIEW_RADAR_POSE } from '../data/sectors';
 import { POLES, ZONES, GUARDS } from '../data/parkData';
 import { createInitialEvent } from '../data/mockData';
 import {
@@ -70,12 +71,20 @@ interface ParkContextType {
   setShowAudioCoverage: React.Dispatch<React.SetStateAction<boolean>>;
   showDeviceLabels: boolean;
   setShowDeviceLabels: React.Dispatch<React.SetStateAction<boolean>>;
+  showStudyPosts: boolean;
+  setShowStudyPosts: React.Dispatch<React.SetStateAction<boolean>>;
+  showLidarRanges: boolean;
+  setShowLidarRanges: React.Dispatch<React.SetStateAction<boolean>>;
   showLidarPlan: boolean;
   setShowLidarPlan: React.Dispatch<React.SetStateAction<boolean>>;
   selectedPlannedLidar: string;
   setSelectedPlannedLidar: React.Dispatch<React.SetStateAction<string>>;
   cameraPose: CameraPose;
   setCameraPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  perspPose: CameraPose;
+  setPerspPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  radarPose: CameraPose;
+  setRadarPose: React.Dispatch<React.SetStateAction<CameraPose>>;
   cameraView: CameraViewMode;
   setCameraView: React.Dispatch<React.SetStateAction<CameraViewMode>>;
   selectedSectorId: SectorId | null;
@@ -171,15 +180,32 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showCCTV, setShowCCTV] = useState<boolean>(true);
   const [showAudioCoverage, setShowAudioCoverage] = useState<boolean>(false);
   const [showDeviceLabels, setShowDeviceLabels] = useState<boolean>(false);
-  const [showLidarPlan, setShowLidarPlan] = useState<boolean>(false);
+  const [showStudyPosts, setShowStudyPosts] = useState<boolean>(false);
+  const [showLidarRanges, setShowLidarRanges] = useState<boolean>(false);
   const [selectedPlannedLidar, setSelectedPlannedLidar] = useState<string>('');
-  const [cameraPose, setCameraPose] = useState<CameraPose>(DEFAULT_CAMERA_POSE);
+  const [perspPose, setPerspPose] = useState<CameraPose>(OVERVIEW_PERSPECTIVE_POSE);
+  const [radarPose, setRadarPose] = useState<CameraPose>(OVERVIEW_RADAR_POSE);
   const [cameraView, setCameraView] = useState<CameraViewMode>('3d');
   const [selectedSectorId, setSelectedSectorId] = useState<SectorId | null>(null);
   const [overviewSelection, setOverviewSelection] = useState<SelectionTarget>({
     type: 'pole',
     poleId: 'AS-103',
   });
+
+  const showLidarPlan = showStudyPosts;
+  const setShowLidarPlan = setShowStudyPosts;
+
+  const cameraPose = cameraView === 'radar' ? radarPose : perspPose;
+  const setCameraPose: React.Dispatch<React.SetStateAction<CameraPose>> = useCallback(
+    (action) => {
+      if (cameraView === 'radar') {
+        setRadarPose(action);
+      } else {
+        setPerspPose(action);
+      }
+    },
+    [cameraView],
+  );
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
@@ -268,7 +294,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetView = useCallback(() => {
     setCameraView('3d');
     setSelectedSectorId(null);
-    setCameraPose(DEFAULT_CAMERA_POSE);
+    setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
+    setRadarPose(OVERVIEW_RADAR_POSE);
     setResetCounter((c) => c + 1);
   }, []);
 
@@ -945,7 +972,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsRaining(false);
     setSelectedPoleId('AS-103');
     setResetCounter((c) => c + 1);
-    setCameraPose(DEFAULT_CAMERA_POSE);
+    setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
+    setRadarPose(OVERVIEW_RADAR_POSE);
     setCameraView('3d');
     setSelectedSectorId(null);
     setOverviewSelection({ type: 'pole', poleId: 'AS-103' });
@@ -953,7 +981,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShowCCTV(true);
     setShowAudioCoverage(false);
     setShowDeviceLabels(false);
-    setShowLidarPlan(false);
+    setShowStudyPosts(false);
+    setShowLidarRanges(false);
     setSelectedPlannedLidar('');
     setIncidents([]);
     setSelectedIncidentId(null);
@@ -1538,12 +1567,20 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShowAudioCoverage,
     showDeviceLabels,
     setShowDeviceLabels,
+    showStudyPosts,
+    setShowStudyPosts,
+    showLidarRanges,
+    setShowLidarRanges,
     showLidarPlan,
     setShowLidarPlan,
     selectedPlannedLidar,
     setSelectedPlannedLidar,
     cameraPose,
     setCameraPose,
+    perspPose,
+    setPerspPose,
+    radarPose,
+    setRadarPose,
     cameraView,
     setCameraView,
     selectedSectorId,

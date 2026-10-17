@@ -113,6 +113,10 @@ export default function ParkOverview() {
     setShowAudioCoverage,
     showDeviceLabels,
     setShowDeviceLabels,
+    showStudyPosts,
+    setShowStudyPosts,
+    showLidarRanges,
+    setShowLidarRanges,
     showLidarPlan,
     setShowLidarPlan,
     selectedPlannedLidar,
@@ -129,6 +133,7 @@ export default function ParkOverview() {
     latestLidarEval,
     clearLatestResults,
     events,
+    incidents,
     triggerSilentFall,
     triggerStandingStopLookalike,
     triggerScream,
@@ -147,6 +152,7 @@ export default function ParkOverview() {
     needsAttentionCount,
     darkAreasCount,
     sensorsOfflineCount,
+    activeIncidentsCount,
   } = usePark();
 
   const [activeTab, setActiveTab] = useState<DemoTab>('lidar');
@@ -312,6 +318,7 @@ export default function ParkOverview() {
   const isSelectedOffline = offlinePoleId === selectedPoleId;
   const isSelectedAlert = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId || sosPoleId === selectedPoleId;
   const isDark = !isSelectedOffline && selectedBrightness < 30;
+  const selectedPlannedSensor = PLANNED_LIDARS.find((p) => p.id === selectedPlannedLidar);
 
   return (
     <div className="park-overview">
@@ -336,245 +343,208 @@ export default function ParkOverview() {
       <div className="workspace">
         {/* ── 3D Viewer ── */}
         <div className="viewer">
-          {/* Controls & Layer Toggles overlay (top-left) */}
-          <div className="viewer-controls" role="group" aria-label="3D viewer and layer controls">
-            {/* Dual Mode Switcher: GIS Blueprint (Default) vs 3D Park Assets */}
-            <div className="map-mode-segmented" role="tablist" aria-label="Map Mode">
-              <button
-                type="button"
-                role="tab"
-                id="mode-blueprint-btn"
-                aria-selected={mapMode === 'blueprint'}
-                className={`mode-tab-btn ${mapMode === 'blueprint' ? 'active' : ''}`}
-                onClick={() => setMapMode('blueprint')}
-                title="GIS Tactical Blueprint (Operational digital twin with coordinate grid and contours)"
-              >
-                🗺️ GIS Blueprint
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="mode-assets-btn"
-                aria-selected={mapMode === 'assets'}
-                className={`mode-tab-btn ${mapMode === 'assets' ? 'active' : ''}`}
-                onClick={() => setMapMode('assets')}
-                title="3D Park Assets (Physical surroundings, trees, and buildings)"
-              >
-                🌳 3D Park Assets
-              </button>
-            </div>
-
-            <div className="viewer-controls-divider" />
-
-            <label className="toggle-label">
-              <input
-                type="checkbox"
-                checked={nightMode}
-                onChange={(e) => setNightMode(e.target.checked)}
-                id="night-mode-toggle"
-              />
-              Night mode
-            </label>
-            <label className="toggle-label" title="Show estimated CCTV camera viewing cones">
-              <input
-                type="checkbox"
-                checked={showCCTV}
-                onChange={(e) => setShowCCTV(e.target.checked)}
-                id="cctv-layer-toggle"
-              />
-              CCTV viewing areas
-            </label>
-            <label className="toggle-label" title="Illustrative 12 m audio areas at AUD-001 and AUD-002. Not calibrated; affected by sound level, noise and obstacles.">
-              <input
-                type="checkbox"
-                checked={showAudioCoverage}
-                onChange={(e) => setShowAudioCoverage(e.target.checked)}
-                id="audio-coverage-toggle"
-              />
-              Audio sensing areas
-            </label>
-            <label className="toggle-label">
-              <input
-                type="checkbox"
-                checked={paused}
-                onChange={(e) => setPaused(e.target.checked)}
-                id="pause-toggle"
-              />
-              Pause motion
-            </label>
-          </div>
-
-          <div className="lidar-plan-toolbar">
-            <label className="toggle-label"><input type="checkbox" checked={showDeviceLabels} onChange={e => setShowDeviceLabels(e.target.checked)} />Device labels</label>
-            <label className="toggle-label">
-              <input type="checkbox" checked={showLidarPlan} onChange={e => setShowLidarPlan(e.target.checked)} />
-              LiDAR range · 16 proposed posts
-            </label>
-            <span>Estimated ranges · Detection unverified</span>
-          </div>
-
-          {/* Reset View (top-right) — High contrast in both Day and Night modes */}
-          <div className="viewer-controls-right">
-            <button
-              id="reset-view-btn"
-              className="btn btn-sm"
-              style={{
-                background: 'rgba(10, 16, 29, 0.84)',
-                color: '#f8fafc',
-                border: '1px solid rgba(148, 163, 184, 0.35)',
-                backdropFilter: 'blur(8px)',
-              }}
-              onClick={resetView}
-            >
-              ↺ Reset View
-            </button>
-          </div>
-
-          {/* Compact Floating 3D Status & Lighting Pills */}
-          {(lightingNote || statusBanner) && (
-            <div
-              style={{
-                position: 'relative',
-                margin: '8px auto',
-                flexShrink: 0,
-                zIndex: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '6px',
-                width: 'max-content',
-                maxWidth: 'calc(100% - 32px)',
-                pointerEvents: 'none',
-              }}
-            >
-              {lightingNote && (
-                <div
-                  style={{
-                    padding: '6px 14px',
-                    background: 'rgba(15, 23, 42, 0.90)',
-                    border: '1px solid rgba(251, 191, 36, 0.55)',
-                    borderRadius: '999px',
-                    fontSize: 'var(--text-sm)',
-                    color: '#fde68a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-                    backdropFilter: 'blur(6px)',
-                    pointerEvents: 'auto',
-                  }}
-                >
-                  <span>💡</span>
-                  <span>
-                    <strong>Safety Lighting:</strong> {lightingNote}
-                  </span>
-                </div>
-              )}
-
-              {statusBanner && (
-                <div
-                  style={{
-                    padding: '6px 14px',
-                    background: 'rgba(15, 23, 42, 0.92)',
-                    border: '1px solid rgba(45, 184, 176, 0.55)',
-                    borderRadius: '999px',
-                    fontSize: 'var(--text-sm)',
-                    color: '#5eead4',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-                    backdropFilter: 'blur(6px)',
-                    pointerEvents: 'auto',
-                  }}
-                >
-                  <span>{statusBanner}</span>
+          {/* ── Compact Tactical HUD: Row 1 (Env & Layers ~44px) + Row 2 (Sectors & Camera ~42px) ── */}
+          <div className="tactical-hud" role="toolbar" aria-label="Tactical map controls and navigation">
+            {/* Row 1: Environment and layer controls */}
+            <div className="hud-row hud-row-env">
+              <div className="hud-group-left">
+                <div className="map-mode-segmented" role="tablist" aria-label="Map Mode">
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ padding: '0 5px', fontSize: 'var(--text-sm)', minHeight: 'unset', lineHeight: 1 }}
-                    onClick={() => setStatusBanner(null)}
-                    aria-label="Dismiss status notice"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tactical Sector Navigation & Camera Presets Bar */}
-          <div className="tactical-sector-bar" role="toolbar" aria-label="Tactical security sectors and camera controls">
-            <div className="tactical-bar-section sector-nav-group" role="tablist" aria-label="Tactical security sectors">
-              <span className="tactical-bar-label">SECTORS:</span>
-              {SECTOR_LIST.map((sector) => {
-                const isActive = selectedSectorId === sector.id;
-                return (
-                  <button
-                    key={sector.id}
                     type="button"
                     role="tab"
-                    id={`sector-${sector.id.toLowerCase()}-btn`}
-                    className={`sector-nav-btn ${isActive ? 'active' : ''}`}
-                    onClick={() => handleSelectSector(sector.id)}
-                    title={`${sector.name} — ${sector.title} (${sector.subtitle})`}
-                    aria-selected={isActive}
+                    id="mode-blueprint-btn"
+                    aria-selected={mapMode === 'blueprint'}
+                    className={`mode-tab-btn ${mapMode === 'blueprint' ? 'active' : ''}`}
+                    onClick={() => setMapMode('blueprint')}
+                    title="GIS Tactical Blueprint (Operational digital twin with coordinate grid and contours)"
                   >
-                    <span className="sector-badge">{sector.id}</span>
-                    <span className="sector-title">{sector.name} · {sector.title}</span>
+                    🗺️ GIS Blueprint
                   </button>
-                );
-              })}
+                  <button
+                    type="button"
+                    role="tab"
+                    id="mode-assets-btn"
+                    aria-selected={mapMode === 'assets'}
+                    className={`mode-tab-btn ${mapMode === 'assets' ? 'active' : ''}`}
+                    onClick={() => setMapMode('assets')}
+                    title="3D Park Assets (Physical surroundings, trees, and buildings)"
+                  >
+                    🌳 3D Park Assets
+                  </button>
+                </div>
+              </div>
+
+              <div className="hud-group-middle">
+                <label className="toggle-label" htmlFor="night-mode-toggle">
+                  <input
+                    type="checkbox"
+                    checked={nightMode}
+                    onChange={(e) => setNightMode(e.target.checked)}
+                    id="night-mode-toggle"
+                  />
+                  Night mode
+                </label>
+                <label className="toggle-label" htmlFor="cctv-layer-toggle" title="Show estimated CCTV camera viewing cones">
+                  <input
+                    type="checkbox"
+                    checked={showCCTV}
+                    onChange={(e) => setShowCCTV(e.target.checked)}
+                    id="cctv-layer-toggle"
+                  />
+                  CCTV areas
+                </label>
+                <label className="toggle-label" htmlFor="audio-coverage-toggle" title="Illustrative 12 m audio areas at AUD-001 and AUD-002">
+                  <input
+                    type="checkbox"
+                    checked={showAudioCoverage}
+                    onChange={(e) => setShowAudioCoverage(e.target.checked)}
+                    id="audio-coverage-toggle"
+                  />
+                  Audio sensing
+                </label>
+                <label className="toggle-label" htmlFor="pause-toggle">
+                  <input
+                    type="checkbox"
+                    checked={paused}
+                    onChange={(e) => setPaused(e.target.checked)}
+                    id="pause-toggle"
+                  />
+                  Pause motion
+                </label>
+                <label className="toggle-label" htmlFor="labels-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showDeviceLabels}
+                    onChange={(e) => setShowDeviceLabels(e.target.checked)}
+                    id="labels-toggle"
+                  />
+                  Labels
+                </label>
+              </div>
+
+              <div className="hud-group-right">
+                <button
+                  id="reset-view-btn"
+                  className="btn btn-sm btn-hud-reset"
+                  onClick={resetView}
+                  title="Reset camera and sector view to default overview"
+                >
+                  ↺ Reset View
+                </button>
+              </div>
             </div>
 
-            <div className="tactical-bar-divider" />
+            {/* Row 2: Tactical navigation */}
+            <div className="hud-row hud-row-nav">
+              <div className="hud-group-left sector-nav-scroll" role="tablist" aria-label="Tactical security sectors">
+                <span className="tactical-bar-label">SECTORS:</span>
+                {SECTOR_LIST.map((sector) => {
+                  const isActive = selectedSectorId === sector.id;
+                  return (
+                    <button
+                      key={sector.id}
+                      type="button"
+                      role="tab"
+                      id={`sector-${sector.id.toLowerCase()}-btn`}
+                      className={`sector-nav-btn ${isActive ? 'active' : ''}`}
+                      onClick={() => handleSelectSector(sector.id)}
+                      title={`${sector.name} — ${sector.title} (${sector.subtitle})`}
+                      aria-selected={isActive}
+                    >
+                      <span className="sector-badge">{sector.id}</span>
+                      <span className="sector-title">{sector.name} · {sector.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div className="tactical-bar-section camera-view-group" role="tablist" aria-label="Camera projection modes">
-              <span className="tactical-bar-label">PROJECTION:</span>
-              <button
-                type="button"
-                role="tab"
-                id="camera-radar-btn"
-                className={`camera-view-btn ${cameraView === 'radar' ? 'active' : ''}`}
-                onClick={() => handleSwitchCameraView('radar')}
-                title="2D Top-Down Radar: Planimetric orthographic overhead tactical view (North oriented upwards)"
-                aria-selected={cameraView === 'radar'}
-              >
-                <svg className="view-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="9" />
-                  <line x1="12" y1="3" x2="12" y2="21" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <circle cx="12" cy="12" r="4" />
-                </svg>
-                <span>2D Top-Down Radar</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="camera-3d-btn"
-                className={`camera-view-btn ${cameraView === '3d' ? 'active' : ''}`}
-                onClick={() => handleSwitchCameraView('3d')}
-                title="3D Overview: Tactical angled perspective camera with full orbital control"
-                aria-selected={cameraView === '3d'}
-              >
-                <svg className="view-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                  <line x1="12" y1="22.08" x2="12" y2="12" />
-                </svg>
-                <span>3D Overview</span>
-              </button>
+              <div className="hud-group-right" role="tablist" aria-label="Camera projection modes">
+                <div className="projection-switch-group">
+                  <button
+                    type="button"
+                    role="tab"
+                    id="camera-radar-btn"
+                    className={`camera-view-btn ${cameraView === 'radar' ? 'active' : ''}`}
+                    onClick={() => handleSwitchCameraView('radar')}
+                    title="2D Top-Down Radar: Planimetric orthographic overhead tactical view (North oriented upwards)"
+                    aria-selected={cameraView === 'radar'}
+                  >
+                    <svg className="view-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="9" />
+                      <line x1="12" y1="3" x2="12" y2="21" />
+                      <line x1="3" y1="12" x2="21" y2="12" />
+                      <circle cx="12" cy="12" r="4" />
+                    </svg>
+                    <span>2D Radar</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    id="camera-3d-btn"
+                    className={`camera-view-btn ${cameraView === '3d' ? 'active' : ''}`}
+                    onClick={() => handleSwitchCameraView('3d')}
+                    title="3D Overview: Tactical angled perspective camera with full orbital control"
+                    aria-selected={cameraView === '3d'}
+                  >
+                    <svg className="view-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                      <line x1="12" y1="22.08" x2="12" y2="12" />
+                    </svg>
+                    <span>3D Overview</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Canvas */}
           <div className="canvas-wrap">
+            {/* Non-layout-shifting floating notification anchored to top-right of map container */}
+            {(lightingNote || statusBanner || activeIncidentsCount > 0) && (
+              <div className="canvas-floating-alert-badge" role="status" aria-live="polite">
+                <div className="alert-badge-summary">
+                  {activeIncidentsCount > 0 ? (
+                    <span className="badge-pill urgent">
+                      ⚠️ {activeIncidentsCount} Active Alert{activeIncidentsCount > 1 ? 's' : ''}
+                      {needsAttentionCount > 0 ? ` · ${needsAttentionCount} Urgent` : ''}
+                    </span>
+                  ) : lightingNote ? (
+                    <span className="badge-pill warn">💡 Safety Lighting Active</span>
+                  ) : (
+                    <span className="badge-pill info">ℹ️ System Notice</span>
+                  )}
+                  {statusBanner && (
+                    <span className="badge-msg-preview" title={statusBanner}>
+                      {statusBanner}
+                    </span>
+                  )}
+                  {lightingNote && !statusBanner && (
+                    <span className="badge-msg-preview" title={lightingNote}>
+                      {lightingNote}
+                    </span>
+                  )}
+                  {statusBanner && (
+                    <button
+                      className="badge-dismiss-btn"
+                      onClick={() => setStatusBanner(null)}
+                      aria-label="Dismiss banner"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <Scene
               mapMode={mapMode}
               cameraView={cameraView}
               selectedSectorId={selectedSectorId}
               sectorFlyTrigger={sectorFlyTrigger}
               showDeviceLabels={showDeviceLabels}
-              showLidarPlan={showLidarPlan}
+              showStudyPosts={showStudyPosts}
+              showLidarRanges={showLidarRanges}
               selectedPlannedLidar={selectedPlannedLidar}
               onSelectPlannedLidar={setSelectedPlannedLidar}
               selectedPoleId={selectedPoleId}
@@ -623,8 +593,14 @@ export default function ParkOverview() {
               />
               📹 CCTV Cone (Estimated)
             </div>
+            {showStudyPosts && (
+              <div className="legend-item" role="listitem">
+                <span className="legend-dot amber" aria-hidden="true" />
+                Proposed LiDAR (Study)
+              </div>
+            )}
             <div className="legend-item" role="listitem">
-              <span className="legend-dot amber" aria-hidden="true" />
+              <span className="legend-dot amber" style={{ background: '#f59e0b' }} aria-hidden="true" />
               Possible Emergency
             </div>
             <div className="legend-item" role="listitem">
@@ -645,19 +621,60 @@ export default function ParkOverview() {
             paddingRight: '4px',
           }}
         >
-          <div className="panel">
-            <h2 className="panel-title">LiDAR placement study</h2>
-            <p className="plan-explanation">{LIDAR_PLAN_NOTE}</p>
-            <label className="form-label" htmlFor="planned-lidar-select">Inspect proposed sensor</label>
-            <select id="planned-lidar-select" className="form-control" value={selectedPlannedLidar} onChange={e => setSelectedPlannedLidar(e.target.value)}>
-              <option value="">Choose a proposed sensor</option>
-              {PLANNED_LIDARS.map(sensor => <option key={sensor.id} value={sensor.id}>{sensor.id} · {sensor.area}</option>)}
-            </select>
-            <p className="plan-explanation">Study area: public park and playground. Hills and residences are context; interiors and obstructed areas need a site survey. Amber: proposed LiDAR range. Purple: illustrative 12 m audio areas at AUD-001 and AUD-002; sound level and background noise affect reach. Neither layer verifies detection.</p>
-          </div>
+          {/* Active Incidents / Safety Lighting Notice in Sidebar */}
+          {(incidents.some((i) => i.status !== 'resolved' && i.status !== 'false_alarm') || lightingNote) && (
+            <div className="panel" style={{ borderLeft: '3px solid var(--urgent)', background: 'rgba(239, 68, 68, 0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <h2 className="panel-title" style={{ margin: 0, color: '#fca5a5' }}>
+                  Active Incidents ({activeIncidentsCount})
+                </h2>
+                <Link to="/incidents" className="btn btn-ghost btn-sm" style={{ fontSize: '12px', padding: '2px 8px' }}>
+                  Console ↗
+                </Link>
+              </div>
+              {lightingNote && (
+                <div style={{ fontSize: '13px', color: '#fde68a', marginBottom: '6px' }}>
+                  💡 <strong>Safety Lighting:</strong> {lightingNote}
+                </div>
+              )}
+              {incidents
+                .filter((i) => i.status !== 'resolved' && i.status !== 'false_alarm')
+                .slice(0, 2)
+                .map((inc) => (
+                  <div
+                    key={inc.id}
+                    style={{
+                      padding: '6px 8px',
+                      background: 'rgba(15, 23, 42, 0.65)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '4px',
+                      marginBottom: '4px',
+                      fontSize: '13px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                      <span style={{ color: '#f8fafc' }}>{inc.displayType}</span>
+                      <span style={{ color: '#fca5a5' }}>{inc.poleId}</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      {inc.reason}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+
           {/* 1. Selected Area Panel */}
           <div className="panel">
-            <h2 className="panel-title">Selected Area</h2>
+            <h2 className="panel-title">
+              {selection.type === 'pole'
+                ? 'Active Infrastructure · 5 Smart Poles'
+                : selection.type === 'camera'
+                ? 'CCTV Inventory · 2 Cameras'
+                : selection.type === 'guard'
+                ? 'Security Patrol · Guard Unit'
+                : 'Anonymous Movement · LiDAR'}
+            </h2>
 
             <div className="entity-switch-row" role="tablist" aria-label="Selection entity">
               <button
@@ -1074,7 +1091,115 @@ export default function ParkOverview() {
             )}
           </div>
 
-          {/* 2. Guided 3-Tab Demo Controls Panel */}
+          {/* 2. LiDAR Placement Study · 16 Proposed */}
+          <div className="panel">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <h2 className="panel-title" style={{ margin: 0 }}>LiDAR Placement Study · 16 Proposed</h2>
+              <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', fontSize: '11px', border: '1px solid rgba(245, 158, 11, 0.4)' }}>
+                Coverage Study
+              </span>
+            </div>
+            <p className="plan-explanation" style={{ fontSize: '13px', lineHeight: 1.4, margin: '6px 0 10px', color: 'var(--text-secondary)' }}>
+              Proposed LiDAR posts are a coverage-planning visualization only. They do not participate in live simulated incident detection.
+            </p>
+
+            {/* Independent layer toggles: Show proposed posts, and estimated range rings */}
+            <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              <label className="toggle-label" style={{ color: '#f59e0b', fontSize: '13px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  id="study-posts-toggle"
+                  checked={showStudyPosts}
+                  onChange={(e) => setShowStudyPosts(e.target.checked)}
+                />
+                Show proposed posts on map
+              </label>
+              <label
+                className="toggle-label"
+                style={{
+                  color: '#f59e0b',
+                  fontSize: '13px',
+                  opacity: showStudyPosts ? 1 : 0.5,
+                  cursor: showStudyPosts ? 'pointer' : 'not-allowed',
+                }}
+                title={showStudyPosts ? 'Show 13m nominal range rings around proposed posts' : 'Enable proposed posts first'}
+              >
+                <input
+                  type="checkbox"
+                  id="lidar-ranges-toggle"
+                  checked={showLidarRanges}
+                  disabled={!showStudyPosts}
+                  onChange={(e) => setShowLidarRanges(e.target.checked)}
+                />
+                Estimated range rings (13m)
+              </label>
+            </div>
+
+            <div className="form-group mb-2">
+              <label className="form-label" htmlFor="planned-lidar-select" style={{ fontSize: '12px' }}>
+                Inspect proposed sensor
+              </label>
+              <select
+                id="planned-lidar-select"
+                className="form-control"
+                value={selectedPlannedLidar}
+                onChange={(e) => setSelectedPlannedLidar(e.target.value)}
+              >
+                <option value="">Choose a proposed sensor (PLAN-L01 to PLAN-L16)</option>
+                {PLANNED_LIDARS.map((sensor) => (
+                  <option key={sensor.id} value={sensor.id}>
+                    {sensor.id} · {sensor.area}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedPlannedSensor && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  padding: '10px 12px',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '6px',
+                  fontSize: 'var(--text-sm)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <strong style={{ color: '#fde68a' }}>{selectedPlannedSensor.id} · Proposed LiDAR</strong>
+                  <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', fontSize: '11px' }}>
+                    Non-Operational
+                  </span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Planned Zone</span>
+                  <span className="metric-value">{selectedPlannedSensor.area}</span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Nominal Range</span>
+                  <span className="metric-value">{selectedPlannedSensor.range}m (Illustrative assumption)</span>
+                </div>
+                <div className="metric-row">
+                  <span className="metric-label">Operational Detection</span>
+                  <span className="metric-value muted">Inactive (Planning layer only)</span>
+                </div>
+                {!showStudyPosts && (
+                  <div style={{ marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-full"
+                      style={{ fontSize: '12px', borderColor: 'rgba(245, 158, 11, 0.5)', color: '#fde68a' }}
+                      onClick={() => setShowStudyPosts(true)}
+                    >
+                      👁️ Show on map
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 3. Guided 3-Tab Demo Controls Panel */}
           <div className="panel">
             <div
               style={{
