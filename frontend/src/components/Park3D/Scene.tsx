@@ -1,9 +1,13 @@
 // Main 3D Canvas scene — assembles park geometry, poles, CCTV inventory, coverage gaps, anonymous LiDAR dots, and security guard markers.
 import { useEffect, useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { PerspectiveCamera } from 'three';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import ParkGeometry from './ParkGeometry';
 import Pole from './Pole';
+import ParkSurroundings from './ParkSurroundings';
+import LidarPlan from './LidarPlan';
+import AudioCoverage from './AudioCoverage';
 import AnonymousDot from './AnonymousDot';
 import GuardMarker from './GuardMarker';
 import CameraAndGapOverlay from './CameraAndGapOverlay';
@@ -11,6 +15,10 @@ import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState } from '../../types';
 
 interface SceneProps {
+  showDeviceLabels: boolean;
+  showLidarPlan: boolean;
+  selectedPlannedLidar: string;
+  onSelectPlannedLidar: (id: string) => void;
   selectedPoleId: string;
   onSelectPole: (id: string) => void;
   onSelectAnonymousDot?: (dotIndex: number) => void;
@@ -19,9 +27,8 @@ interface SceneProps {
   onSelectCamera?: (cameraId: string) => void;
   lighting: LightingMap;
   lightingNote?: string;
-  showCoverage: boolean;
+  showAudioCoverage: boolean;
   showCCTV?: boolean;
-  showGaps?: boolean;
   paused: boolean;
   nightMode: boolean;
   fallPoleId: string | null;
@@ -38,7 +45,23 @@ interface SceneProps {
 
 interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
 
+// Preserve the park's horizontal framing when the viewer becomes narrow.
+function ResponsiveFraming() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    if (!(camera instanceof PerspectiveCamera)) return;
+    const aspect = size.width / Math.max(1, size.height);
+    camera.fov = 2 * Math.atan(Math.tan(22 * Math.PI / 180) * Math.max(1, 1.35 / aspect)) * 180 / Math.PI;
+    camera.updateProjectionMatrix();
+  }, [camera, size.width, size.height]);
+  return null;
+}
+
 function World({
+  showDeviceLabels,
+  showLidarPlan,
+  selectedPlannedLidar,
+  onSelectPlannedLidar,
   selectedPoleId,
   onSelectPole,
   onSelectAnonymousDot,
@@ -46,9 +69,8 @@ function World({
   selectedCameraId = null,
   onSelectCamera,
   lighting,
-  showCoverage,
+  showAudioCoverage,
   showCCTV = true,
-  showGaps = false,
   paused,
   nightMode,
   fallPoleId,
@@ -65,21 +87,33 @@ function World({
 
   return (
     <>
-      <color attach="background" args={[nightMode ? '#08121e' : '#7baacc']} />
-      <ambientLight intensity={nightMode ? 0.18 : 1.3} />
+      <color attach="background" args={[nightMode ? '#132333' : '#d1e0df']} />
+      <ambientLight intensity={nightMode ? 1.15 : 1.35} />
       <directionalLight
-        position={[12, 25, 10]}
-        intensity={nightMode ? 0.22 : 2.1}
+        position={[14, 28, 12]}
+        intensity={nightMode ? 0.85 : 2.2}
+        color={nightMode ? '#c7d2fe' : '#fffdf5'}
         castShadow
         shadow-mapSize={[1024, 1024]}
       />
+      <hemisphereLight
+        args={[
+          nightMode ? '#cbdce8' : '#dbeafe',
+          nightMode ? '#0f172a' : '#334155',
+          nightMode ? 0.45 : 0.45,
+        ]}
+      />
 
-      <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} />
+      <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} nightMode={nightMode} />
+
+      <ParkSurroundings nightMode={nightMode} />
+      {showAudioCoverage && <AudioCoverage showLabels={showDeviceLabels} />}
+      <LidarPlan showRanges={showLidarPlan} selectedId={selectedPlannedLidar} onSelect={onSelectPlannedLidar} />
 
       {/* Independent CCTV Camera Inventory & Coverage Gap Overlay */}
       <CameraAndGapOverlay
+        showDeviceLabels={showDeviceLabels}
         showCCTV={showCCTV}
-        showGaps={showGaps}
         selectedCameraId={selectedCameraId}
         onSelectCamera={onSelectCamera}
       />
@@ -87,6 +121,7 @@ function World({
       {POLES.map((pole) => (
         <Pole
           key={pole.id}
+          showLabel={showDeviceLabels}
           data={pole}
           selected={selectedPoleId === pole.id && !selectedCameraId}
           onSelect={onSelectPole}
@@ -94,7 +129,6 @@ function World({
           isOffline={offlinePoleId === pole.id}
           hasAcousticRipple={acousticPoleId === pole.id}
           lightBrightness={offlinePoleId === pole.id ? 0 : (lighting[pole.id] ?? 70)}
-          showCoverage={showCoverage}
         />
       ))}
 
@@ -129,6 +163,10 @@ function World({
 }
 
 export default function Scene({
+  showDeviceLabels,
+  showLidarPlan,
+  selectedPlannedLidar,
+  onSelectPlannedLidar,
   selectedPoleId,
   onSelectPole,
   onSelectAnonymousDot,
@@ -137,9 +175,8 @@ export default function Scene({
   onSelectCamera,
   lighting,
   lightingNote,
-  showCoverage,
+  showAudioCoverage,
   showCCTV = true,
-  showGaps = false,
   paused,
   nightMode,
   fallPoleId,
@@ -163,20 +200,24 @@ export default function Scene({
 
   return (
     <Canvas
-      camera={{ position: [0, 26, 32], fov: 46 }}
+      camera={{ position: [36, 70, 77], fov: 44 }}
       shadows
       gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
     >
+      <ResponsiveFraming />
       <OrbitControls
         ref={controlsRef}
         enableDamping
         dampingFactor={0.06}
         maxPolarAngle={Math.PI / 2.15}
         minDistance={8}
-        maxDistance={58}
+        maxDistance={180}
       />
       <World
+        showLidarPlan={showLidarPlan}
+        selectedPlannedLidar={selectedPlannedLidar}
+        onSelectPlannedLidar={onSelectPlannedLidar}
         selectedPoleId={selectedPoleId}
         onSelectPole={onSelectPole}
         onSelectAnonymousDot={onSelectAnonymousDot}
@@ -185,9 +226,9 @@ export default function Scene({
         onSelectCamera={onSelectCamera}
         lighting={lighting}
         lightingNote={lightingNote}
-        showCoverage={showCoverage}
+        showAudioCoverage={showAudioCoverage}
+        showDeviceLabels={showDeviceLabels}
         showCCTV={showCCTV}
-        showGaps={showGaps}
         paused={paused}
         nightMode={nightMode}
         fallPoleId={fallPoleId}

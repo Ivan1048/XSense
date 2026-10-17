@@ -6,6 +6,7 @@ import Scene from '../components/Park3D/Scene';
 import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
 import StatusLabel from '../components/StatusLabel';
 import AlertCard from '../components/AlertCard';
+import { PLANNED_LIDARS, LIDAR_PLAN_NOTE } from '../data/lidarPlan';
 import { POLES } from '../data/parkData';
 import { usePark } from '../context/ParkContext';
 import { getAudioSampleFileUrl } from '../services/api';
@@ -95,8 +96,6 @@ export default function ParkOverview() {
     lightingNote,
     nightMode,
     setNightMode,
-    showCoverage,
-    setShowCoverage,
     paused,
     setPaused,
     fallPoleId,
@@ -139,7 +138,6 @@ export default function ParkOverview() {
 
   // Independent Hybrid Map Layer Toggles (Requirement M18)
   const [showCCTV, setShowCCTV] = useState<boolean>(true);
-  const [showGaps, setShowGaps] = useState<boolean>(true);
 
   const [activeTab, setActiveTab] = useState<DemoTab>('lidar');
   const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
@@ -147,6 +145,10 @@ export default function ParkOverview() {
   const [isRecordingMic, setIsRecordingMic] = useState<boolean>(false);
   const [micCountdown, setMicCountdown] = useState<number>(3);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [showDeviceLabels, setShowDeviceLabels] = useState(false);
+  const [showAudioCoverage, setShowAudioCoverage] = useState(false);
+  const [showLidarPlan, setShowLidarPlan] = useState(false);
+  const [selectedPlannedLidar, setSelectedPlannedLidar] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -288,7 +290,7 @@ export default function ParkOverview() {
       <div className="overview-top">
         <div className="overview-heading">
           <h1>Park Overview</h1>
-          <p>See park activity, hybrid coverage layers, lighting, and alerts.</p>
+          <p>Elmina-inspired park & neighbourhood · Simulated layout</p>
         </div>
         <SummaryStats
           needsAttention={needsAttentionCount}
@@ -319,25 +321,16 @@ export default function ParkOverview() {
                 onChange={(e) => setShowCCTV(e.target.checked)}
                 id="cctv-layer-toggle"
               />
-              📹 CCTV cones
+              CCTV viewing areas
             </label>
-            <label className="toggle-label" title="Show illustrative LiDAR and Audio sensor circles">
+            <label className="toggle-label" title="Illustrative 12 m audio areas at AUD-001 and AUD-002. Not calibrated; affected by sound level, noise and obstacles.">
               <input
                 type="checkbox"
-                checked={showCoverage}
-                onChange={(e) => setShowCoverage(e.target.checked)}
-                id="coverage-toggle"
+                checked={showAudioCoverage}
+                onChange={(e) => setShowAudioCoverage(e.target.checked)}
+                id="audio-coverage-toggle"
               />
-              📡 LiDAR/Audio rings
-            </label>
-            <label className="toggle-label" title="Highlight unmonitored blind spots">
-              <input
-                type="checkbox"
-                checked={showGaps}
-                onChange={(e) => setShowGaps(e.target.checked)}
-                id="gaps-layer-toggle"
-              />
-              ⚠️ Coverage gaps
+              Audio sensing areas
             </label>
             <label className="toggle-label">
               <input
@@ -348,6 +341,15 @@ export default function ParkOverview() {
               />
               Pause motion
             </label>
+          </div>
+
+          <div className="lidar-plan-toolbar">
+            <label className="toggle-label"><input type="checkbox" checked={showDeviceLabels} onChange={e => setShowDeviceLabels(e.target.checked)} />Device labels</label>
+            <label className="toggle-label">
+              <input type="checkbox" checked={showLidarPlan} onChange={e => setShowLidarPlan(e.target.checked)} />
+              LiDAR range · 16 proposed posts
+            </label>
+            <span>Estimated ranges · Detection unverified</span>
           </div>
 
           {/* Reset View (top-right) — High contrast in both Day and Night modes */}
@@ -371,10 +373,9 @@ export default function ParkOverview() {
           {(lightingNote || statusBanner) && (
             <div
               style={{
-                position: 'absolute',
-                top: '52px',
-                left: '50%',
-                transform: 'translateX(-50%)',
+                position: 'relative',
+                margin: '8px auto',
+                flexShrink: 0,
                 zIndex: 10,
                 display: 'flex',
                 flexDirection: 'column',
@@ -392,7 +393,7 @@ export default function ParkOverview() {
                     background: 'rgba(15, 23, 42, 0.90)',
                     border: '1px solid rgba(251, 191, 36, 0.55)',
                     borderRadius: '999px',
-                    fontSize: '12px',
+                    fontSize: 'var(--text-sm)',
                     color: '#fde68a',
                     display: 'flex',
                     alignItems: 'center',
@@ -416,7 +417,7 @@ export default function ParkOverview() {
                     background: 'rgba(15, 23, 42, 0.92)',
                     border: '1px solid rgba(45, 184, 176, 0.55)',
                     borderRadius: '999px',
-                    fontSize: '12px',
+                    fontSize: 'var(--text-sm)',
                     color: '#5eead4',
                     display: 'flex',
                     alignItems: 'center',
@@ -429,7 +430,7 @@ export default function ParkOverview() {
                   <span>{statusBanner}</span>
                   <button
                     className="btn btn-ghost btn-sm"
-                    style={{ padding: '0 5px', fontSize: '11px', minHeight: 'unset', lineHeight: 1 }}
+                    style={{ padding: '0 5px', fontSize: 'var(--text-sm)', minHeight: 'unset', lineHeight: 1 }}
                     onClick={() => setStatusBanner(null)}
                     aria-label="Dismiss status notice"
                   >
@@ -443,6 +444,10 @@ export default function ParkOverview() {
           {/* Canvas */}
           <div className="canvas-wrap">
             <Scene
+              showDeviceLabels={showDeviceLabels}
+              showLidarPlan={showLidarPlan}
+              selectedPlannedLidar={selectedPlannedLidar}
+              onSelectPlannedLidar={setSelectedPlannedLidar}
               selectedPoleId={selectedPoleId}
               onSelectPole={handleSelectPole}
               onSelectAnonymousDot={handleSelectAnonymousDot}
@@ -451,9 +456,8 @@ export default function ParkOverview() {
               onSelectCamera={handleSelectCamera}
               lighting={lighting}
               lightingNote={lightingNote}
-              showCoverage={showCoverage}
+              showAudioCoverage={showAudioCoverage}
               showCCTV={showCCTV}
-              showGaps={showGaps}
               paused={paused}
               nightMode={nightMode}
               fallPoleId={fallPoleId}
@@ -487,14 +491,6 @@ export default function ParkOverview() {
               📹 CCTV Cone (Estimated)
             </div>
             <div className="legend-item" role="listitem">
-              <span
-                className="legend-dot"
-                style={{ background: '#a78bfa' }}
-                aria-hidden="true"
-              />
-              ⚠️ Coverage Gap
-            </div>
-            <div className="legend-item" role="listitem">
               <span className="legend-dot amber" aria-hidden="true" />
               Possible Emergency
             </div>
@@ -516,6 +512,16 @@ export default function ParkOverview() {
             paddingRight: '4px',
           }}
         >
+          <div className="panel">
+            <h2 className="panel-title">LiDAR placement study</h2>
+            <p className="plan-explanation">{LIDAR_PLAN_NOTE}</p>
+            <label className="form-label" htmlFor="planned-lidar-select">Inspect proposed sensor</label>
+            <select id="planned-lidar-select" className="form-control" value={selectedPlannedLidar} onChange={e => { setSelectedPlannedLidar(e.target.value); setShowLidarPlan(true); }}>
+              <option value="">Choose a proposed sensor</option>
+              {PLANNED_LIDARS.map(sensor => <option key={sensor.id} value={sensor.id}>{sensor.id} · {sensor.area}</option>)}
+            </select>
+            <p className="plan-explanation">Study area: public park and playground. Hills and residences are context; interiors and obstructed areas need a site survey. Amber: proposed LiDAR range. Purple: illustrative 12 m audio areas at AUD-001 and AUD-002; sound level and background noise affect reach. Neither layer verifies detection.</p>
+          </div>
           {/* 1. Selected Area Panel */}
           <div className="panel">
             <h2 className="panel-title">Selected Area</h2>
@@ -568,8 +574,8 @@ export default function ParkOverview() {
                     marginBottom: '8px',
                   }}
                 >
-                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Smart Infrastructure</span>
-                  <span className="badge badge-simulated" style={{ fontSize: '10px' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Smart Infrastructure</span>
+                  <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
                     Simulated Telemetry
                   </span>
                 </div>
@@ -622,12 +628,16 @@ export default function ParkOverview() {
                     </div>
                     <div className="metric-row">
                       <span className="metric-label">CCTV Coverage</span>
-                      <span className="metric-value" style={{ fontSize: '12px' }}>
+                      <span className="metric-value" style={{ fontSize: 'var(--text-sm)' }}>
                         {selectedPole.id === 'AS-101'
-                          ? 'Covered by CAM-01 (Inventory)'
+                          ? 'CAM-01 nearby · View unverified'
                           : selectedPole.id === 'AS-105'
-                          ? 'Covered by CAM-02 (Inventory)'
-                          : 'No CCTV coverage (LiDAR/Audio zone)'}
+                          ? 'CAM-02 nearby · View unverified'
+                          : selectedPole.id === 'AS-102'
+                          ? 'CAM-05 proposed · View unverified'
+                          : selectedPole.id === 'AS-104'
+                          ? 'CAM-04 proposed · View unverified'
+                          : 'No verified camera view'}
                       </span>
                     </div>
 
@@ -654,7 +664,7 @@ export default function ParkOverview() {
                         marginTop: '10px',
                         paddingTop: '10px',
                         borderTop: '1px solid var(--border-subtle)',
-                        fontSize: '12px',
+                        fontSize: 'var(--text-sm)',
                       }}
                     >
                       <summary
@@ -668,7 +678,7 @@ export default function ParkOverview() {
                         }}
                       >
                         <span>📱 Resident SOS QR Code ({selectedPole.id})</span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Show QR ▾</span>
+                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Show QR ▾</span>
                       </summary>
                       <div
                         style={{
@@ -706,7 +716,7 @@ export default function ParkOverview() {
                           </div>
                           <div
                             style={{
-                              fontSize: '11px',
+                              fontSize: 'var(--text-sm)',
                               color: 'var(--text-muted)',
                               wordBreak: 'break-all',
                               marginBottom: '6px',
@@ -720,7 +730,7 @@ export default function ParkOverview() {
                             rel="noopener noreferrer"
                             className="btn btn-primary btn-sm"
                             style={{
-                              fontSize: '11px',
+                              fontSize: 'var(--text-sm)',
                               padding: '4px 10px',
                               minHeight: '28px',
                               textDecoration: 'none',
@@ -748,8 +758,8 @@ export default function ParkOverview() {
                     marginBottom: '8px',
                   }}
                 >
-                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>CCTV Map Inventory</span>
-                  <span className="badge badge-simulated" style={{ fontSize: '10px' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>CCTV Map Inventory</span>
+                  <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
                     Inventory Only
                   </span>
                 </div>
@@ -782,18 +792,18 @@ export default function ParkOverview() {
                 </div>
                 <div className="metric-row">
                   <span className="metric-label">Integration Status</span>
-                  <span className="metric-value warn" style={{ fontSize: '12px' }}>
+                  <span className="metric-value warn" style={{ fontSize: 'var(--text-sm)' }}>
                     Map Inventory Only (No Live Feed)
                   </span>
                 </div>
                 <div className="metric-row">
                   <span className="metric-label">Viewing Basis</span>
-                  <span className="metric-value" style={{ fontSize: '12px' }}>
+                  <span className="metric-value" style={{ fontSize: 'var(--text-sm)' }}>
                     {selectedCamera.coverageNote}
                   </span>
                 </div>
 
-                <div className="notice notice-info mt-2" style={{ fontSize: '12px' }}>
+                <div className="notice notice-info mt-2" style={{ fontSize: 'var(--text-sm)' }}>
                   <strong>Honest Camera Boundary:</strong> {selectedCamera.limitations} A viewing cone on the map is an estimate and does not guarantee identification or supply live video without authorized stream integration.
                 </div>
               </>
@@ -813,7 +823,7 @@ export default function ParkOverview() {
                   <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
                     Person Detected
                   </h3>
-                  <span className="badge badge-teal" style={{ fontSize: '10px' }}>
+                  <span className="badge badge-teal" style={{ fontSize: 'var(--text-sm)' }}>
                     Simulated LiDAR
                   </span>
                 </div>
@@ -851,7 +861,7 @@ export default function ParkOverview() {
                   </span>
                 </div>
 
-                <div className="notice notice-info mt-2" style={{ fontSize: '12px' }}>
+                <div className="notice notice-info mt-2" style={{ fontSize: 'var(--text-sm)' }}>
                   <strong>LiDAR Privacy Safeguard:</strong> Anonymous 3D bounding-box geometry only. No facial recognition, identity, or continuous movement history is stored.
                 </div>
               </>
@@ -886,7 +896,7 @@ export default function ParkOverview() {
                         <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
                           Security Guard
                         </h3>
-                        <span className="badge badge-blue" style={{ fontSize: '10px' }}>
+                        <span className="badge badge-blue" style={{ fontSize: 'var(--text-sm)' }}>
                           Guard Location (Simulated)
                         </span>
                       </div>
@@ -947,7 +957,7 @@ export default function ParkOverview() {
               <button
                 id="demo-reset-btn"
                 className="btn btn-ghost btn-sm"
-                style={{ fontSize: '11px', padding: '2px 8px', minHeight: '28px' }}
+                style={{ fontSize: 'var(--text-sm)', padding: '2px 8px', minHeight: '28px' }}
                 onClick={() => {
                   handleReset();
                   clearLatestResults();
@@ -997,7 +1007,7 @@ export default function ParkOverview() {
             {errorBanner && (
               <div
                 className="notice notice-warning"
-                style={{ marginBottom: '10px', fontSize: '12px', color: '#fca5a5', borderColor: '#ef4444' }}
+                style={{ marginBottom: '10px', fontSize: 'var(--text-sm)', color: '#fca5a5', borderColor: '#ef4444' }}
               >
                 {errorBanner}
               </div>
@@ -1006,7 +1016,7 @@ export default function ParkOverview() {
             {/* TAB 1: LiDAR Fall vs. Lookalike Immunity */}
             {activeTab === 'lidar' && (
               <div className="scenario-section">
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
                   Compare a person stopping upright on West Loop (<strong>AS-104</strong>) vs. collapsing to the ground.
                 </p>
 
@@ -1084,7 +1094,7 @@ export default function ParkOverview() {
                       background: 'rgba(15, 23, 42, 0.65)',
                       border: '1px solid rgba(56, 189, 248, 0.3)',
                       borderRadius: '8px',
-                      fontSize: '12px',
+                      fontSize: 'var(--text-sm)',
                     }}
                   >
                     <div
@@ -1096,7 +1106,7 @@ export default function ParkOverview() {
                       }}
                     >
                       <strong style={{ color: 'var(--text-primary)' }}>LiDAR 3D Cluster Readout</strong>
-                      <span className="badge badge-simulated" style={{ fontSize: '9px' }}>
+                      <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
                         SIMULATED
                       </span>
                     </div>
@@ -1125,7 +1135,7 @@ export default function ParkOverview() {
                     </div>
                     <div className="metric-row">
                       <span className="metric-label">Lighting Action</span>
-                      <span className="metric-value" style={{ fontSize: '11px' }}>
+                      <span className="metric-value" style={{ fontSize: 'var(--text-sm)' }}>
                         {latestLidarEval.lighting_note}
                       </span>
                     </div>
@@ -1137,7 +1147,7 @@ export default function ParkOverview() {
             {/* TAB 2: Sound AI (YAMNet Recorded WAV & Live Mic) */}
             {activeTab === 'sound' && (
               <div className="scenario-section">
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
                   Click <strong>▶ Listen</strong> to hear the real WAV clip, or <strong>Analyze</strong> to run YAMNet.
                 </p>
 
@@ -1163,7 +1173,7 @@ export default function ParkOverview() {
                             marginBottom: '4px',
                           }}
                         >
-                          <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+                          <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
                             {sample.title}
                           </strong>
                           <span className={`scenario-pill ${sample.badgeClass}`}>
@@ -1172,7 +1182,7 @@ export default function ParkOverview() {
                         </div>
                         <div
                           style={{
-                            fontSize: '11px',
+                            fontSize: 'var(--text-sm)',
                             color: 'var(--text-muted)',
                             marginBottom: '6px',
                           }}
@@ -1183,7 +1193,7 @@ export default function ParkOverview() {
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm"
-                            style={{ fontSize: '11px', padding: '4px 10px', minHeight: '30px' }}
+                            style={{ fontSize: 'var(--text-sm)', padding: '4px 10px', minHeight: '30px' }}
                             onClick={() => handleTogglePlaySample(sample.id)}
                           >
                             {isPlaying ? '⏹ Stop' : '▶ Listen'}
@@ -1192,7 +1202,7 @@ export default function ParkOverview() {
                             type="button"
                             className="btn btn-primary btn-sm"
                             style={{
-                              fontSize: '11px',
+                              fontSize: 'var(--text-sm)',
                               padding: '4px 10px',
                               minHeight: '30px',
                               flex: 1,
@@ -1236,7 +1246,7 @@ export default function ParkOverview() {
                       background: 'rgba(15, 23, 42, 0.72)',
                       border: '1px solid rgba(45, 184, 176, 0.4)',
                       borderRadius: '8px',
-                      fontSize: '12px',
+                      fontSize: 'var(--text-sm)',
                     }}
                   >
                     <div
@@ -1254,7 +1264,7 @@ export default function ParkOverview() {
                             ? 'badge badge-live'
                             : 'badge badge-recorded'
                         }
-                        style={{ fontSize: '9px' }}
+                        style={{ fontSize: 'var(--text-sm)' }}
                       >
                         {latestAudioInference.source_mode === 'live'
                           ? 'LIVE INPUT'
@@ -1286,7 +1296,7 @@ export default function ParkOverview() {
                     </div>
 
                     {latestAudioInference.top_classes && latestAudioInference.top_classes.length > 0 && (
-                      <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      <div style={{ marginTop: '6px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                         <strong>Top AudioSet Classes:</strong>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                           {latestAudioInference.top_classes.map((c, idx) => (
@@ -1296,7 +1306,7 @@ export default function ParkOverview() {
                                 padding: '2px 6px',
                                 borderRadius: '4px',
                                 background: 'rgba(255,255,255,0.07)',
-                                fontSize: '11px',
+                                fontSize: 'var(--text-sm)',
                               }}
                             >
                               {c.class_name}: {Math.round((c.score ?? 0) * 100)}%
@@ -1313,7 +1323,7 @@ export default function ParkOverview() {
             {/* TAB 3: Park Environment & Lighting */}
             {activeTab === 'env' && (
               <div className="scenario-section">
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
                   Simulate low pathway lighting, offline sensor heartbeats, and blocked routes.
                 </p>
 

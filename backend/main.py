@@ -58,11 +58,15 @@ if __name__ == "__main__":
     import os
     import uvicorn
 
+    # Change CWD to this file's directory so that WatchFiles reload workers
+    # can always find 'main.py' and the 'routes/' package, regardless of where
+    # the user ran `python main.py` from.
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
     uvicorn.run(
         "main:app",
         host="127.0.0.1",
         port=8000,
         reload=True,
-        app_dir=os.path.dirname(os.path.abspath(__file__)),
     )
 
