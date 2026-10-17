@@ -2,12 +2,18 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import type {
   AlertEvent,
   AudioInferenceResult,
+  CameraPose,
+  CameraViewMode,
   DispatchedGuardState,
   Guard,
   Incident,
   LidarEvaluationResult,
   LightingMap,
+  SelectionTarget,
 } from '../types';
+import { DEFAULT_CAMERA_POSE } from '../types';
+import type { SectorId } from '../data/sectors';
+import { OVERVIEW_PERSPECTIVE_POSE, OVERVIEW_RADAR_POSE } from '../data/sectors';
 import { POLES, ZONES, GUARDS } from '../data/parkData';
 import { createInitialEvent } from '../data/mockData';
 import {
@@ -55,6 +61,36 @@ interface ParkContextType {
   isRaining: boolean;
   resetCounter: number;
   resetView: () => void;
+
+  // Persisted Map View & Inspection State across Route Navigations
+  mapMode: 'blueprint' | 'assets';
+  setMapMode: React.Dispatch<React.SetStateAction<'blueprint' | 'assets'>>;
+  showCCTV: boolean;
+  setShowCCTV: React.Dispatch<React.SetStateAction<boolean>>;
+  showAudioCoverage: boolean;
+  setShowAudioCoverage: React.Dispatch<React.SetStateAction<boolean>>;
+  showDeviceLabels: boolean;
+  setShowDeviceLabels: React.Dispatch<React.SetStateAction<boolean>>;
+  showStudyPosts: boolean;
+  setShowStudyPosts: React.Dispatch<React.SetStateAction<boolean>>;
+  showLidarRanges: boolean;
+  setShowLidarRanges: React.Dispatch<React.SetStateAction<boolean>>;
+  showLidarPlan: boolean;
+  setShowLidarPlan: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedPlannedLidar: string;
+  setSelectedPlannedLidar: React.Dispatch<React.SetStateAction<string>>;
+  cameraPose: CameraPose;
+  setCameraPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  perspPose: CameraPose;
+  setPerspPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  radarPose: CameraPose;
+  setRadarPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  cameraView: CameraViewMode;
+  setCameraView: React.Dispatch<React.SetStateAction<CameraViewMode>>;
+  selectedSectorId: SectorId | null;
+  setSelectedSectorId: React.Dispatch<React.SetStateAction<SectorId | null>>;
+  overviewSelection: SelectionTarget;
+  setOverviewSelection: React.Dispatch<React.SetStateAction<SelectionTarget>>;
 
   // Latest AI Evaluation Telemetry
   latestAudioInference: AudioInferenceResult | null;
@@ -138,6 +174,38 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => loadSessionState().incidents ?? [],
   );
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+
+  // Persisted Map View & Inspection State across Route Navigations
+  const [mapMode, setMapMode] = useState<'blueprint' | 'assets'>('blueprint');
+  const [showCCTV, setShowCCTV] = useState<boolean>(true);
+  const [showAudioCoverage, setShowAudioCoverage] = useState<boolean>(false);
+  const [showDeviceLabels, setShowDeviceLabels] = useState<boolean>(false);
+  const [showStudyPosts, setShowStudyPosts] = useState<boolean>(false);
+  const [showLidarRanges, setShowLidarRanges] = useState<boolean>(false);
+  const [selectedPlannedLidar, setSelectedPlannedLidar] = useState<string>('');
+  const [perspPose, setPerspPose] = useState<CameraPose>(OVERVIEW_PERSPECTIVE_POSE);
+  const [radarPose, setRadarPose] = useState<CameraPose>(OVERVIEW_RADAR_POSE);
+  const [cameraView, setCameraView] = useState<CameraViewMode>('3d');
+  const [selectedSectorId, setSelectedSectorId] = useState<SectorId | null>(null);
+  const [overviewSelection, setOverviewSelection] = useState<SelectionTarget>({
+    type: 'pole',
+    poleId: 'AS-103',
+  });
+
+  const showLidarPlan = showStudyPosts;
+  const setShowLidarPlan = setShowStudyPosts;
+
+  const cameraPose = cameraView === 'radar' ? radarPose : perspPose;
+  const setCameraPose: React.Dispatch<React.SetStateAction<CameraPose>> = useCallback(
+    (action) => {
+      if (cameraView === 'radar') {
+        setRadarPose(action);
+      } else {
+        setPerspPose(action);
+      }
+    },
+    [cameraView],
+  );
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
@@ -224,6 +292,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const resetView = useCallback(() => {
+    setCameraView('3d');
+    setSelectedSectorId(null);
+    setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
+    setRadarPose(OVERVIEW_RADAR_POSE);
     setResetCounter((c) => c + 1);
   }, []);
 
@@ -900,6 +972,18 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsRaining(false);
     setSelectedPoleId('AS-103');
     setResetCounter((c) => c + 1);
+    setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
+    setRadarPose(OVERVIEW_RADAR_POSE);
+    setCameraView('3d');
+    setSelectedSectorId(null);
+    setOverviewSelection({ type: 'pole', poleId: 'AS-103' });
+    setMapMode('blueprint');
+    setShowCCTV(true);
+    setShowAudioCoverage(false);
+    setShowDeviceLabels(false);
+    setShowStudyPosts(false);
+    setShowLidarRanges(false);
+    setSelectedPlannedLidar('');
     setIncidents([]);
     setSelectedIncidentId(null);
     setGuards(GUARDS);
@@ -1475,6 +1559,34 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     darkAreasCount,
     sensorsOfflineCount,
     activeIncidentsCount,
+    mapMode,
+    setMapMode,
+    showCCTV,
+    setShowCCTV,
+    showAudioCoverage,
+    setShowAudioCoverage,
+    showDeviceLabels,
+    setShowDeviceLabels,
+    showStudyPosts,
+    setShowStudyPosts,
+    showLidarRanges,
+    setShowLidarRanges,
+    showLidarPlan,
+    setShowLidarPlan,
+    selectedPlannedLidar,
+    setSelectedPlannedLidar,
+    cameraPose,
+    setCameraPose,
+    perspPose,
+    setPerspPose,
+    radarPose,
+    setRadarPose,
+    cameraView,
+    setCameraView,
+    selectedSectorId,
+    setSelectedSectorId,
+    overviewSelection,
+    setOverviewSelection,
   };
 
   return <ParkContext.Provider value={value}>{children}</ParkContext.Provider>;

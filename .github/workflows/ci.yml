@@ -1,0 +1,73 @@
+name: XSense CI — Frontend, Backend & Docker Validation
+
+on:
+  push:
+    branches: [main, Nazarick, elson, "feature/**"]
+  pull_request:
+    branches: [main, Nazarick, elson]
+  workflow_dispatch:
+
+jobs:
+  frontend-check:
+    name: Frontend TypeScript & Vite Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Production bundle build
+        run: npm run build
+
+  backend-check:
+    name: Backend FastAPI & Audio/LiDAR Engine Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install system audio libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsndfile1
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify Python syntax and FastAPI app import
+        run: |
+          python -m py_compile main.py services/audio_inference.py
+          python -c "import main; assert main.app is not None; print('FastAPI app verified successfully')"
+
+  docker-compose-check:
+    name: Validate Docker Compose Specification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml syntax
+        run: docker compose config -q

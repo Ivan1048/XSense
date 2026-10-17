@@ -297,7 +297,16 @@ a { color: inherit; text-decoration: none; }
   gap: var(--sp-1);
 }
 
-.canvas-wrap { flex: 1; position: relative; min-height: 0; }
+.canvas-wrap {
+  flex: 1;
+  position: relative;
+  min-height: 480px;
+}
+@media (min-height: 800px) {
+  .canvas-wrap {
+    min-height: 520px;
+  }
+}
 .canvas-wrap canvas { width: 100% !important; height: 100% !important; }
 
 .canvas-stamp {
@@ -1313,3 +1322,301 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .lidar-plan-toolbar .toggle-label { color: #f4ce88; }
 .plan-explanation { font-size: 15px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
 .plan-explanation:last-child { margin: 12px 0 0; }
+
+/* ── Dual-Mode Map Switcher: GIS Blueprint vs 3D Park Assets ─────── */
+.map-mode-segmented {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(11, 20, 36, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: var(--r-sm);
+  padding: 3px;
+  gap: 3px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.mode-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--t);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.mode-tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mode-tab-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: 700;
+  border-color: #38bdf8;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.45);
+}
+
+.viewer-controls-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(148, 163, 184, 0.3);
+  margin: 0 4px;
+  align-self: center;
+}
+
+/* ── Tactical HUD — Compact 2-Row Layout (~86-92px desktop) ─────────────── */
+.tactical-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(10, 16, 29, 0.96);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  flex-shrink: 0;
+  z-index: 15;
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hud-row-env {
+  min-height: 40px;
+}
+
+.hud-row-nav {
+  min-height: 36px;
+}
+
+.hud-group-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.hud-group-middle {
+  display: flex;
+  align-items: center;
+  gap: 12px 18px;
+  flex-wrap: wrap;
+}
+
+.hud-group-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.sector-nav-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  white-space: nowrap;
+}
+.sector-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.projection-switch-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-hud-reset {
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--t);
+  white-space: nowrap;
+}
+.btn-hud-reset:hover {
+  background: rgba(30, 48, 74, 0.95);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+}
+
+.tactical-bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-right: 4px;
+  text-transform: uppercase;
+}
+
+.sector-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: rgba(17, 29, 46, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.sector-nav-btn:hover {
+  background: rgba(30, 48, 74, 0.95);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #f1f5f9;
+}
+
+.sector-nav-btn.active {
+  background: rgba(14, 116, 144, 0.38);
+  border-color: #38bdf8;
+  color: #e0f2fe;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
+.sector-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.sector-nav-btn.active .sector-badge {
+  background: #38bdf8;
+  color: #032b43;
+  border-color: #38bdf8;
+}
+
+.camera-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  background: rgba(17, 29, 46, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.camera-view-btn:hover {
+  background: rgba(30, 48, 74, 0.95);
+  border-color: rgba(45, 184, 176, 0.45);
+  color: #f1f5f9;
+}
+
+.camera-view-btn.active {
+  background: rgba(45, 184, 176, 0.32);
+  border-color: #2db8b0;
+  color: #a7f3d0;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(45, 184, 176, 0.4);
+}
+
+.view-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+/* ── Non-Layout-Shifting Floating Alert Notification ─────────────────────── */
+.canvas-floating-alert-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.alert-badge-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(10, 16, 29, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.alert-badge-summary .badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.alert-badge-summary .badge-pill.urgent {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+.alert-badge-summary .badge-pill.warn {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+.alert-badge-summary .badge-pill.info {
+  background: rgba(56, 189, 248, 0.25);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+}
+
+.badge-msg-preview {
+  font-size: 12px;
+  color: #cbd5e1;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-dismiss-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.badge-dismiss-btn:hover {
+  color: #f1f5f9;
+}
