@@ -17,7 +17,15 @@ import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState, CameraPose, CameraViewMode } from '../../types';
 import { DEFAULT_CAMERA_POSE } from '../../types';
 import type { SectorId } from '../../data/sectors';
-import { SECTORS, OVERVIEW_PERSPECTIVE_POSE, OVERVIEW_RADAR_POSE, OVERVIEW_RADAR_ZOOM } from '../../data/sectors';
+import {
+  SECTORS,
+  SECTOR_BOUNDS,
+  PARK_BOUNDS,
+  calculateOrthographicFrustum,
+  OVERVIEW_PERSPECTIVE_POSE,
+  OVERVIEW_RADAR_POSE,
+  OVERVIEW_RADAR_ZOOM,
+} from '../../data/sectors';
 
 interface SceneProps {
   mapMode?: 'blueprint' | 'assets';
@@ -25,7 +33,9 @@ interface SceneProps {
   selectedSectorId?: SectorId | null;
   sectorFlyTrigger?: number;
   showDeviceLabels: boolean;
-  showLidarPlan: boolean;
+  showStudyPosts?: boolean;
+  showLidarRanges?: boolean;
+  showLidarPlan?: boolean;
   selectedPlannedLidar: string;
   onSelectPlannedLidar: (id: string) => void;
   selectedPoleId: string;
@@ -57,7 +67,13 @@ interface SceneProps {
 interface WorldProps extends Omit<SceneProps, 'resetCounter' | 'cameraPose' | 'onCameraChange' | 'cameraView' | 'selectedSectorId' | 'sectorFlyTrigger'> {}
 
 // Preserve horizontal framing across Perspective and Orthographic cameras when viewer aspect ratio changes
-function ResponsiveFraming({ cameraView }: { cameraView: CameraViewMode }) {
+function ResponsiveFraming({
+  cameraView,
+  selectedSectorId,
+}: {
+  cameraView: CameraViewMode;
+  selectedSectorId?: SectorId | null;
+}) {
   const { camera, size } = useThree();
   useEffect(() => {
     const aspect = size.width / Math.max(1, size.height);
@@ -66,21 +82,27 @@ function ResponsiveFraming({ cameraView }: { cameraView: CameraViewMode }) {
       camera.fov = 2 * Math.atan(Math.tan(22 * Math.PI / 180) * Math.max(1, 1.35 / aspect)) * 180 / Math.PI;
       camera.updateProjectionMatrix();
     } else if (camera instanceof THREE.OrthographicCamera) {
-      const frustumH = 70;
-      const frustumW = frustumH * aspect;
-      camera.left = -frustumW / 2;
-      camera.right = frustumW / 2;
-      camera.top = frustumH / 2;
-      camera.bottom = -frustumH / 2;
+      const bounds = selectedSectorId && SECTOR_BOUNDS[selectedSectorId]
+        ? SECTOR_BOUNDS[selectedSectorId]
+        : PARK_BOUNDS;
+      const frustum = calculateOrthographicFrustum(bounds, aspect, 1.12);
+      camera.left = frustum.left;
+      camera.right = frustum.right;
+      camera.top = frustum.top;
+      camera.bottom = frustum.bottom;
+      camera.near = 0.1;
+      camera.far = 500;
       camera.updateProjectionMatrix();
     }
-  }, [camera, cameraView, size.width, size.height]);
+  }, [camera, cameraView, selectedSectorId, size.width, size.height]);
   return null;
 }
 
 function World({
   mapMode = 'blueprint',
   showDeviceLabels,
+  showStudyPosts,
+  showLidarRanges,
   showLidarPlan,
   selectedPlannedLidar,
   onSelectPlannedLidar,
@@ -106,6 +128,8 @@ function World({
   onFinishGuardReturn,
 }: WorldProps) {
   const sosPole = sosPoleId ? POLES.find((p) => p.id === sosPoleId) : undefined;
+  const showPosts = showStudyPosts ?? showLidarPlan ?? false;
+  const showRanges = showPosts && (showLidarRanges ?? false);
 
   return (
     <>
@@ -140,7 +164,12 @@ function World({
       )}
 
       {showAudioCoverage && <AudioCoverage showLabels={showDeviceLabels} />}
-      <LidarPlan showRanges={showLidarPlan} selectedId={selectedPlannedLidar} onSelect={onSelectPlannedLidar} />
+      <LidarPlan
+        showPosts={showPosts}
+        showRanges={showRanges}
+        selectedId={selectedPlannedLidar}
+        onSelect={onSelectPlannedLidar}
+      />
 
       {/* Independent CCTV Camera Inventory & Coverage Gap Overlay */}
       <CameraAndGapOverlay
@@ -164,6 +193,15 @@ function World({
         />
       ))}
 
+      {/* SOS Signal Beacon when Resident Triggers SOS */}
+      {sosPole && (
+        <mesh position={[sosPole.position[0], 0.05, sosPole.position[1]]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[1.5, 4.2, 32]} />
+          <meshBasicMaterial color="#ef4444" transparent opacity={0.65} depthWrite={false} />
+        </mesh>
+      )}
+
+      {/* Anonymous Movement Simulation (LiDAR Point Cloud Dots) */}
       {PEOPLE_PATHS.map((path, i) => (
         <AnonymousDot
           key={i}
@@ -179,6 +217,7 @@ function World({
         />
       ))}
 
+      {/* Security Guards — with Non-Overlapping Dispatched Formation */}
       {dispatchedGuards.map((dg) => (
         <GuardMarker
           key={dg.guardId}
@@ -231,19 +270,26 @@ function CameraRig({
 
   const orthoCamera = useMemo(() => {
     const aspect = size.width / Math.max(1, size.height);
-    const frustumH = 70;
-    const frustumW = frustumH * aspect;
+    const bounds = selectedSectorId && SECTOR_BOUNDS[selectedSectorId]
+      ? SECTOR_BOUNDS[selectedSectorId]
+      : PARK_BOUNDS;
+    const frustum = calculateOrthographicFrustum(bounds, aspect, 1.12);
     const cam = new THREE.OrthographicCamera(
-      -frustumW / 2,
-      frustumW / 2,
-      frustumH / 2,
-      -frustumH / 2,
+      frustum.left,
+      frustum.right,
+      frustum.top,
+      frustum.bottom,
       0.1,
       500
     );
-    cam.up.set(0, 0, -1); // North is -Z in world space
-    cam.position.set(cameraPose.position[0], 80, cameraPose.position[2]);
+    // Conventions: World ground plane X/Z, Elevation Y, Looking direction -Y, North-up (screen top = world -Z)
+    cam.up.set(0, 0, -1);
+    const cx = cameraPose.target ? cameraPose.target[0] : frustum.target[0];
+    const cz = cameraPose.target ? cameraPose.target[2] : frustum.target[2];
+    cam.position.set(cx, 100, cz);
+    cam.lookAt(cx, 0, cz);
     cam.zoom = cameraPose.zoom ?? 1.0;
+    cam.updateProjectionMatrix();
     return cam;
   }, []);
 
@@ -257,6 +303,15 @@ function CameraRig({
       controls.object = activeCamera;
       if (cameraView === 'radar') {
         controls.enableRotate = false;
+        controls.enablePan = true;
+        controls.enableZoom = true;
+        controls.dampingFactor = 0.06;
+        controls.zoomSpeed = 0.4;
+        controls.minDistance = 0;
+        controls.maxDistance = Infinity;
+        controls.minPolarAngle = 0;
+        // IMPORTANT: NEVER clamp maxPolarAngle to 0 in radar mode. With up=(0,0,-1), phi is 90 deg. Clamping to 0 flips camera onto the horizon.
+        controls.maxPolarAngle = Math.PI;
         controls.mouseButtons = {
           LEFT: THREE.MOUSE.PAN,
           MIDDLE: THREE.MOUSE.DOLLY,
@@ -266,13 +321,19 @@ function CameraRig({
         controls.maxZoom = 4.5;
       } else {
         controls.enableRotate = true;
+        controls.enablePan = true;
+        controls.enableZoom = true;
+        controls.dampingFactor = 0.08;
+        controls.zoomSpeed = 0.45;
+        controls.minDistance = 8;
+        controls.maxDistance = 180;
+        controls.minPolarAngle = 0;
+        controls.maxPolarAngle = Math.PI / 2.15;
         controls.mouseButtons = {
           LEFT: THREE.MOUSE.ROTATE,
           MIDDLE: THREE.MOUSE.DOLLY,
           RIGHT: THREE.MOUSE.PAN,
         };
-        controls.minDistance = 8;
-        controls.maxDistance = 180;
       }
       controls.update();
     }
@@ -283,9 +344,12 @@ function CameraRig({
     const controls = controlsRef.current;
     if (controls) {
       if (cameraView === 'radar') {
-        orthoCamera.position.set(cameraPose.position[0], 80, cameraPose.position[2]);
+        const cx = cameraPose.target[0];
+        const cz = cameraPose.target[2];
+        orthoCamera.position.set(cx, 100, cz);
         orthoCamera.up.set(0, 0, -1);
-        controls.target.set(cameraPose.target[0], 0, cameraPose.target[2]);
+        controls.target.set(cx, 0, cz);
+        orthoCamera.lookAt(cx, 0, cz);
         orthoCamera.zoom = cameraPose.zoom ?? 1.0;
         orthoCamera.updateProjectionMatrix();
       } else {
@@ -328,14 +392,21 @@ function CameraRig({
     const controls = controlsRef.current;
     if (!controls) return;
 
+    const targetPosVec = cameraView === 'radar'
+      ? new THREE.Vector3(destPos[0], 100, destPos[2])
+      : new THREE.Vector3(...destPos);
+    const targetTgtVec = cameraView === 'radar'
+      ? new THREE.Vector3(destTarget[0], 0, destTarget[2])
+      : new THREE.Vector3(...destTarget);
+
     animRef.current = {
       isAnimating: true,
       startTime: performance.now(),
       duration: durationMs,
       startPos: activeCamera.position.clone(),
-      targetPos: new THREE.Vector3(...destPos),
+      targetPos: targetPosVec,
       startTarget: controls.target.clone(),
-      targetTarget: new THREE.Vector3(...destTarget),
+      targetTarget: targetTgtVec,
       startZoom: cameraView === 'radar' ? (activeCamera as THREE.OrthographicCamera).zoom : undefined,
       targetZoom: destZoom,
     };
@@ -467,6 +538,12 @@ function CameraRig({
     const handleChange = () => {
       if (animRef.current.isAnimating) return;
 
+      if (cameraView === 'radar') {
+        activeCamera.position.y = 100;
+        activeCamera.up.set(0, 0, -1);
+        controls.target.y = 0;
+      }
+
       const pos = activeCamera.position;
       const tgt = controls.target;
       const zoom = cameraView === 'radar' ? (activeCamera as THREE.OrthographicCamera).zoom : undefined;
@@ -512,11 +589,21 @@ function CameraRig({
 
     if (elapsed >= 1) {
       anim.isAnimating = false;
-      activeCamera.position.copy(anim.targetPos);
-      controls.target.copy(anim.targetTarget);
-      if (cameraView === 'radar' && anim.targetZoom !== undefined) {
-        (activeCamera as THREE.OrthographicCamera).zoom = anim.targetZoom;
-        activeCamera.updateProjectionMatrix();
+      if (cameraView === 'radar') {
+        activeCamera.position.copy(anim.targetPos);
+        activeCamera.position.y = 100;
+        activeCamera.up.set(0, 0, -1);
+        controls.target.copy(anim.targetTarget);
+        controls.target.y = 0;
+        activeCamera.lookAt(controls.target);
+        if (anim.targetZoom !== undefined) {
+          (activeCamera as THREE.OrthographicCamera).zoom = anim.targetZoom;
+          activeCamera.updateProjectionMatrix();
+        }
+      } else {
+        activeCamera.position.copy(anim.targetPos);
+        activeCamera.up.set(0, 1, 0);
+        controls.target.copy(anim.targetTarget);
       }
       controls.update();
       saveCurrentPose();
@@ -528,13 +615,21 @@ function CameraRig({
       activeCamera.position.lerpVectors(anim.startPos, anim.targetPos, t);
       controls.target.lerpVectors(anim.startTarget, anim.targetTarget, t);
 
-      if (cameraView === 'radar' && anim.startZoom !== undefined && anim.targetZoom !== undefined) {
-        (activeCamera as THREE.OrthographicCamera).zoom = THREE.MathUtils.lerp(
-          anim.startZoom,
-          anim.targetZoom,
-          t
-        );
-        activeCamera.updateProjectionMatrix();
+      if (cameraView === 'radar') {
+        activeCamera.position.y = 100;
+        activeCamera.up.set(0, 0, -1);
+        controls.target.y = 0;
+        activeCamera.lookAt(controls.target);
+        if (anim.startZoom !== undefined && anim.targetZoom !== undefined) {
+          (activeCamera as THREE.OrthographicCamera).zoom = THREE.MathUtils.lerp(
+            anim.startZoom,
+            anim.targetZoom,
+            t
+          );
+          activeCamera.updateProjectionMatrix();
+        }
+      } else {
+        activeCamera.up.set(0, 1, 0);
       }
       controls.update();
     }
@@ -544,11 +639,15 @@ function CameraRig({
     <OrbitControls
       ref={controlsRef}
       enableDamping
-      dampingFactor={0.08}
-      zoomSpeed={0.45}
-      maxPolarAngle={cameraView === 'radar' ? 0 : Math.PI / 2.15}
-      minDistance={8}
-      maxDistance={180}
+      dampingFactor={cameraView === 'radar' ? 0.06 : 0.08}
+      zoomSpeed={cameraView === 'radar' ? 0.4 : 0.45}
+      enableRotate={cameraView === '3d'}
+      enablePan={true}
+      enableZoom={true}
+      maxPolarAngle={cameraView === 'radar' ? Math.PI : Math.PI / 2.15}
+      minPolarAngle={0}
+      minDistance={cameraView === 'radar' ? 0 : 8}
+      maxDistance={cameraView === 'radar' ? Infinity : 180}
     />
   );
 }
@@ -559,6 +658,8 @@ export default function Scene({
   selectedSectorId = null,
   sectorFlyTrigger = 0,
   showDeviceLabels,
+  showStudyPosts,
+  showLidarRanges,
   showLidarPlan,
   selectedPlannedLidar,
   onSelectPlannedLidar,
@@ -594,7 +695,7 @@ export default function Scene({
       gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
     >
-      <ResponsiveFraming cameraView={cameraView} />
+      <ResponsiveFraming cameraView={cameraView} selectedSectorId={selectedSectorId} />
       <CameraRig
         cameraView={cameraView}
         selectedSectorId={selectedSectorId}
@@ -605,6 +706,8 @@ export default function Scene({
       />
       <World
         mapMode={mapMode}
+        showStudyPosts={showStudyPosts}
+        showLidarRanges={showLidarRanges}
         showLidarPlan={showLidarPlan}
         selectedPlannedLidar={selectedPlannedLidar}
         onSelectPlannedLidar={onSelectPlannedLidar}
