@@ -6,6 +6,7 @@ import { OrbitControls } from '@react-three/drei';
 import ParkGeometry from './ParkGeometry';
 import Pole from './Pole';
 import ParkSurroundings from './ParkSurroundings';
+import TacticalBlueprint from './TacticalBlueprint';
 import LidarPlan from './LidarPlan';
 import AudioCoverage from './AudioCoverage';
 import AnonymousDot from './AnonymousDot';
@@ -15,6 +16,7 @@ import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState } from '../../types';
 
 interface SceneProps {
+  mapMode?: 'blueprint' | 'assets';
   showDeviceLabels: boolean;
   showLidarPlan: boolean;
   selectedPlannedLidar: string;
@@ -58,6 +60,7 @@ function ResponsiveFraming() {
 }
 
 function World({
+  mapMode = 'blueprint',
   showDeviceLabels,
   showLidarPlan,
   selectedPlannedLidar,
@@ -87,26 +90,36 @@ function World({
 
   return (
     <>
-      <color attach="background" args={[nightMode ? '#132333' : '#d1e0df']} />
-      <ambientLight intensity={nightMode ? 1.15 : 1.35} />
+      <color attach="background" args={[mapMode === 'blueprint' ? '#050c18' : (nightMode ? '#132333' : '#d1e0df')]} />
+      <ambientLight intensity={mapMode === 'blueprint' ? 1.35 : (nightMode ? 1.15 : 1.35)} />
       <directionalLight
         position={[14, 28, 12]}
-        intensity={nightMode ? 0.85 : 2.2}
-        color={nightMode ? '#c7d2fe' : '#fffdf5'}
+        intensity={mapMode === 'blueprint' ? 0.95 : (nightMode ? 0.85 : 2.2)}
+        color={mapMode === 'blueprint' ? '#93c5fd' : (nightMode ? '#c7d2fe' : '#fffdf5')}
         castShadow
         shadow-mapSize={[1024, 1024]}
       />
       <hemisphereLight
         args={[
-          nightMode ? '#cbdce8' : '#dbeafe',
-          nightMode ? '#0f172a' : '#334155',
-          nightMode ? 0.45 : 0.45,
+          mapMode === 'blueprint' ? '#38bdf8' : (nightMode ? '#cbdce8' : '#dbeafe'),
+          mapMode === 'blueprint' ? '#020617' : (nightMode ? '#0f172a' : '#334155'),
+          0.45,
         ]}
       />
 
-      <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} nightMode={nightMode} />
+      {mapMode === 'blueprint' ? (
+        <TacticalBlueprint
+          blockedRouteZone={blockedRouteZone}
+          isRaining={isRaining}
+          nightMode={nightMode}
+        />
+      ) : (
+        <>
+          <ParkGeometry blockedRouteZone={blockedRouteZone} isRaining={isRaining} nightMode={nightMode} />
+          <ParkSurroundings nightMode={nightMode} />
+        </>
+      )}
 
-      <ParkSurroundings nightMode={nightMode} />
       {showAudioCoverage && <AudioCoverage showLabels={showDeviceLabels} />}
       <LidarPlan showRanges={showLidarPlan} selectedId={selectedPlannedLidar} onSelect={onSelectPlannedLidar} />
 
@@ -163,6 +176,7 @@ function World({
 }
 
 export default function Scene({
+  mapMode = 'blueprint',
   showDeviceLabels,
   showLidarPlan,
   selectedPlannedLidar,
@@ -215,6 +229,7 @@ export default function Scene({
         maxDistance={180}
       />
       <World
+        mapMode={mapMode}
         showLidarPlan={showLidarPlan}
         selectedPlannedLidar={selectedPlannedLidar}
         onSelectPlannedLidar={onSelectPlannedLidar}
