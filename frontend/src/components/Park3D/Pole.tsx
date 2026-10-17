@@ -5,6 +5,7 @@ import { Html } from '@react-three/drei';
 import type { PoleData } from '../../types';
 
 interface PoleProps {
+  showLabel?: boolean;
   data: PoleData;
   selected: boolean;
   onSelect: (id: string) => void;
@@ -12,7 +13,6 @@ interface PoleProps {
   isOffline: boolean;
   hasAcousticRipple?: boolean;
   lightBrightness: number;
-  showCoverage: boolean;
 }
 
 function AcousticRipples({ color = '#f97316' }: { color?: string }) {
@@ -50,6 +50,7 @@ function AcousticRipples({ color = '#f97316' }: { color?: string }) {
 }
 
 export default function Pole({
+  showLabel = true,
   data,
   selected,
   onSelect,
@@ -57,7 +58,6 @@ export default function Pole({
   isOffline,
   hasAcousticRipple = false,
   lightBrightness,
-  showCoverage,
 }: PoleProps) {
   const [x, z] = data.position;
 
@@ -73,7 +73,6 @@ export default function Pole({
   if (isOffline) tagClass += ' offline';
   if (hasAcousticRipple) tagClass += ' alert';
 
-  const coverageColor = isOffline ? '#ef4444' : hasAcousticRipple ? '#f59e0b' : '#55bac9';
 
   return (
     <group position={[x, 0, z]}>
@@ -130,27 +129,14 @@ export default function Pole({
 
       {hasAcousticRipple && <AcousticRipples color="#ea580c" />}
 
-      {showCoverage && (
-        <mesh position={[0, 0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[7, 48]} />
-          <meshBasicMaterial
-            color={coverageColor}
-            transparent
-            opacity={0.09}
-            depthWrite={false}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-      )}
-
-      <Html position={[0, 4.9, 0]} center distanceFactor={25}>
+      {(showLabel || selected || isAlert || isOffline) && <Html position={[0, 4.9, 0]} center>
         <button className={tagClass} onClick={() => onSelect(data.id)}>
           {data.id}
           {isOffline ? ' · Offline ⚠' : ''}
           {hasAcousticRipple ? ' · 🔊' : ''}
           {isEmergencyBoosted ? ' · 💡100%' : ''}
         </button>
-      </Html>
+      </Html>}
     </group>
   );
 }

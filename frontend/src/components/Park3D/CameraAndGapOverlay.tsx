@@ -1,7 +1,7 @@
-// Hybrid 3D Map Overlay: Independent CCTV Camera Inventory, Estimated Viewing Cones, and Coverage Gaps.
+// Hybrid 3D Map Overlay: Independent CCTV Camera Inventory, Estimated Viewing Cones only.
 // Per product rules: Camera markers represent inventory and estimated viewing direction only — no live stream or AI CCTV analytics implied.
 import * as THREE from 'three';
-import { Html, Edges } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 
 export interface CameraInventoryItem {
   id: string;
@@ -35,18 +35,58 @@ export const CCTV_CAMERAS: CameraInventoryItem[] = [
     coverageNote: 'Estimated viewing cone covering East Exit walkway (near AS-105).',
     limitations: 'Inventory marker only — no live video stream integrated. Tree foliage blocks Central Path.',
   },
+  {
+    id: 'CAM-03',
+    name: 'Playground Entrance CCTV',
+    zoneName: 'Play Garden',
+    position: [-35, 16],
+    targetPoint: [-29, 12],
+    status: 'inventory_only',
+    coverageNote: 'Proposed camera location; estimated viewing direction toward the public play garden.',
+    limitations: 'Simulation inventory only. No camera feed connected; visibility and detection require site verification.',
+  },
+  {
+    id: 'CAM-04',
+    name: 'West Loop CCTV',
+    zoneName: 'West Loop',
+    position: [-17, 14],
+    targetPoint: [-11, 10],
+    status: 'inventory_only',
+    coverageNote: 'Proposed camera location; estimated viewing direction toward the public west loop.',
+    limitations: 'Simulation inventory only. No camera feed connected; visibility and detection require site verification.',
+  },
+  {
+    id: 'CAM-05',
+    name: 'Lakeside CCTV',
+    zoneName: 'Lakeside Path',
+    position: [-7, -15],
+    targetPoint: [-3, -9],
+    status: 'inventory_only',
+    coverageNote: 'Proposed camera location; estimated viewing direction toward the public lakeside path.',
+    limitations: 'Simulation inventory only. No camera feed connected; visibility and detection require site verification.',
+  },
+  {
+    id: 'CAM-06',
+    name: 'Residential Approach CCTV',
+    zoneName: 'Residential Approach',
+    position: [24, 19],
+    targetPoint: [25, 25],
+    status: 'inventory_only',
+    coverageNote: 'Proposed camera location; estimated viewing direction toward the public residential approach.',
+    limitations: 'Simulation inventory only. No camera feed connected; visibility and detection require site verification.',
+  },
 ];
 
 interface CameraAndGapOverlayProps {
+  showDeviceLabels?: boolean;
   showCCTV: boolean;
-  showGaps: boolean;
   selectedCameraId?: string | null;
   onSelectCamera?: (cameraId: string) => void;
 }
 
 export default function CameraAndGapOverlay({
+  showDeviceLabels = true,
   showCCTV,
-  showGaps,
   selectedCameraId,
   onSelectCamera,
 }: CameraAndGapOverlayProps) {
@@ -122,11 +162,12 @@ export default function CameraAndGapOverlay({
             </group>
 
             {/* Camera HTML Badge */}
-            <Html position={[0, 5.05, 0]} center distanceFactor={25}>
+            {(showDeviceLabels || isSelected) && <Html position={[0, 7.8, 0]} center>
               <button
                 type="button"
                 className={`pole-tag${isSelected ? ' selected' : ''}`}
                 style={{
+                  transform: cam.id === 'CAM-02' ? 'translate(32px, -34px)' : undefined,
                   borderColor: isSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.55)',
                   color: '#e0f2fe',
                   background: isSelected ? 'rgba(2, 132, 199, 0.94)' : 'rgba(15, 23, 42, 0.90)',
@@ -138,46 +179,11 @@ export default function CameraAndGapOverlay({
               >
                 📹 {cam.id}
               </button>
-            </Html>
+            </Html>}
           </group>
         );
       })}
 
-      {/* 2. Explicit Coverage Gap Zone (Unmonitored Blind Spot) */}
-      {showGaps && (
-        <group position={[10.5, 0.07, -1.5]}>
-          <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[8.0, 6.0]} />
-            <meshBasicMaterial
-              color="#a78bfa"
-              transparent
-              opacity={0.16}
-              side={THREE.DoubleSide}
-              depthWrite={false}
-            />
-            <Edges threshold={15} color="#a78bfa" lineWidth={1.8} />
-          </mesh>
-
-          <Html position={[0, 0.85, 0]} center distanceFactor={26}>
-            <div
-              style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-                background: 'rgba(46, 16, 101, 0.92)',
-                color: '#ddd6fe',
-                border: '1px solid #a78bfa',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
-              }}
-            >
-              ⚠️ Coverage Gap (Unmonitored Blind Spot — No CCTV or LiDAR)
-            </div>
-          </Html>
-        </group>
-      )}
     </group>
   );
 }

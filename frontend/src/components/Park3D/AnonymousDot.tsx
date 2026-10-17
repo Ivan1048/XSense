@@ -186,13 +186,13 @@ export default function AnonymousDot({
         <Html
           position={isCollapsed ? [0, -0.35, 1.35] : [0, htmlYOffset, 0]}
           center
-          distanceFactor={24}
+
         >
           <div
             style={{
               padding: '4px 9px',
               borderRadius: '6px',
-              fontSize: '11px',
+              fontSize: '14px',
               fontWeight: 600,
               whiteSpace: 'nowrap',
               pointerEvents: 'none',

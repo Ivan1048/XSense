@@ -103,7 +103,7 @@ export default function GuardMarker({
       </mesh>
 
       {/* Floating Blue Shield Icon at staggered height */}
-      <Html position={[0, formation.htmlY, 0]} center distanceFactor={26}>
+      <Html position={[0, formation.htmlY, 0]} center>
         <button
           className="guard-shield-btn"
           style={{ padding: '3px 8px', gap: '6px' }}
@@ -137,10 +137,10 @@ export default function GuardMarker({
             </svg>
           </div>
           <div className="guard-shield-text">
-            <span className="guard-shield-name" style={{ fontSize: '11px', lineHeight: 1.15 }}>
+            <span className="guard-shield-name" style={{ fontSize: '14px', lineHeight: 1.15 }}>
               {guardName}
             </span>
-            <span className="guard-shield-badge" style={{ fontSize: '9px' }}>
+            <span className="guard-shield-badge" style={{ fontSize: '14px' }}>
               GUARD · {statusLabel}
             </span>
           </div>

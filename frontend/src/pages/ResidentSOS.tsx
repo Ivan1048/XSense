@@ -106,7 +106,7 @@ export default function ResidentSOS() {
           <Link
             to="/incidents"
             style={{
-              fontSize: '12px',
+              fontSize: 'var(--text-sm)',
               color: 'var(--accent)',
               textDecoration: 'none',
               fontWeight: 600,
@@ -270,7 +270,7 @@ export default function ResidentSOS() {
 
         {/* Location summary */}
         {locationSummary && (
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginBottom: '12px' }}>
             Location: {locationSummary}
           </p>
         )}

@@ -16,7 +16,7 @@ export default function AlertCard({ event }: AlertCardProps) {
       <p className="event-message">{event.message}</p>
 
       {event.details && (
-        <details style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+        <details style={{ marginTop: '6px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--accent)', userSelect: 'none' }}>
             More Details
           </summary>

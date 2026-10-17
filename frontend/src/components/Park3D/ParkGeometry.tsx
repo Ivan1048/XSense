@@ -20,7 +20,7 @@ function createCurvedRibbonGeometry(
   yElevation = 0.06
 ): THREE.BufferGeometry {
   const curvePoints = points.map(([x, z]) => new THREE.Vector3(x, yElevation, z));
-  const curve = new THREE.CatmullRomCurve3(curvePoints, isClosed, 'catmullrom', 0.25);
+  const curve = new THREE.CatmullRomCurve3(curvePoints, isClosed, 'centripetal', 0.25);
   const segments = Math.max(24, points.length * 10);
   const sampled = curve.getPoints(segments);
 
@@ -56,7 +56,7 @@ function createCurvedRibbonGeometry(
     const v = i / segments;
     uvs.push(0, v, 1, v);
 
-    if (i < segments) {
+    if (i < segments && !(isClosed && pt.x > 1.3 && pt.x < 5.9 && Math.abs(pt.z + 4.8) < 0.7)) {
       const base = i * 2;
       // Winding order: base, base + 2, base + 1 -> Normal points strictly UP (+Y)
       indices.push(base, base + 2, base + 1);
@@ -210,7 +210,7 @@ function PathwayLamp({ x, z, nightMode = false }: { x: number; z: number; nightM
           <meshBasicMaterial
             color="#fef08a"
             transparent
-            opacity={0.12}
+            opacity={0.035}
             side={THREE.DoubleSide}
             depthWrite={false}
           />
@@ -271,93 +271,32 @@ interface ParkGeometryProps {
 }
 
 export default function ParkGeometry({ blockedRouteZone, isRaining = false, nightMode = false }: ParkGeometryProps) {
-  // ── 1. Park Ground Surface Geometry ─────────────────────────────────────────
-  // Polygon defined in (x, z) space. By mapping (x, -z) into THREE.Shape and rotating
-  // by -Math.PI / 2, vertices map exactly to (x, 0, z) with upward normal [0, 1, 0]!
+  const boundary = useMemo(() => {
+    const points = [[-42,-27],[-37,-43],[-15,-48],[10,-47],[28,-39],[41,-30],[43,-8],[43,18],[36,33],[17,38],[-9,37],[-32,32],[-43,17],[-44,-5]];
+    return new THREE.CatmullRomCurve3(points.map(([x,z]) => new THREE.Vector3(x,0,z)), true, 'centripetal').getPoints(100);
+  }, []);
   const parkGroundGeometry = useMemo(() => {
-    const boundary: [number, number][] = [
-      [-17, -19],
-      [-8,  -21],
-      [ 6,  -21],
-      [16,  -18],
-      [22,  -14],
-      [24,   -3],
-      [23,    8],
-      [20,   16],
-      [14,   21],
-      [ 0,   22],
-      [-12,  21],
-      [-19,  16],
-      [-23,   7],
-      [-23,  -6],
-      [-20, -15],
-    ];
-
-    const shape = new THREE.Shape();
-    shape.moveTo(boundary[0][0], -boundary[0][1]);
-    for (let i = 1; i < boundary.length; i++) {
-      shape.lineTo(boundary[i][0], -boundary[i][1]);
-    }
-
-    const geom = new THREE.ShapeGeometry(shape, 24);
-    geom.rotateX(-Math.PI / 2);
-    geom.computeVertexNormals();
-    return geom;
-  }, []);
-
-  // Perimeter skirt giving the park slab tangible 3D thickness
+    const shape = new THREE.Shape(boundary.map(p => new THREE.Vector2(p.x, -p.z)));
+    const geometry = new THREE.ShapeGeometry(shape);
+    geometry.rotateX(-Math.PI / 2);
+    return geometry;
+  }, [boundary]);
   const parkSkirtGeometry = useMemo(() => {
-    const boundary: [number, number][] = [
-      [-17, -19], [-8, -21], [6, -21], [16, -18],
-      [22, -14], [24, -3], [23, 8], [20, 16],
-      [14, 21], [0, 22], [-12, 21], [-19, 16],
-      [-23, 7], [-23, -6], [-20, -15], [-17, -19],
-    ];
-
-    const vertices: number[] = [];
-    const indices: number[] = [];
-
-    for (let i = 0; i < boundary.length - 1; i++) {
-      const [x1, z1] = boundary[i];
-      const [x2, z2] = boundary[i + 1];
-
-      const base = i * 4;
-      vertices.push(
-        x1, 0.0, z1,
-        x2, 0.0, z2,
-        x1, -0.45, z1,
-        x2, -0.45, z2,
-      );
-      indices.push(base, base + 2, base + 1);
-      indices.push(base + 1, base + 2, base + 3);
-    }
-
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geom.setIndex(indices);
-    geom.computeVertexNormals();
-    return geom;
-  }, []);
+    const shape = new THREE.Shape(boundary.map(p => new THREE.Vector2(p.x, -p.z)));
+    const geometry = new THREE.ExtrudeGeometry(shape, {depth: 2.4, bevelEnabled: false});
+    geometry.rotateX(-Math.PI / 2);
+    geometry.translate(0, -2.42, 0);
+    return geometry;
+  }, [boundary]);
 
   // ── 2. Unified Lake & Shoreline Geometry ───────────────────────────────────
   // Centered in north-central area (x: -2.2 to 8.0, z: -12.5 to -2.6).
   // Has a distinct narrow channel under the bridge from x: 2.0 to 5.2 at z = -4.8.
   const lakeShapeGeometry = useMemo(() => {
     const lakeContour: [number, number][] = [
-      [-2.2, -9.0],
-      [-1.6, -11.5],
-      [ 1.0, -12.4],
-      [ 4.5, -12.5],
-      [ 7.5, -11.5],
-      [ 8.0,  -8.5],
-      [ 7.0,  -6.5],
-      [ 5.2,  -5.5],
-      [ 5.0,  -3.2], // South bay past bridge
-      [ 3.6,  -2.6], // Southernmost tip
-      [ 2.2,  -3.2],
-      [ 2.0,  -5.5], // Inlet west bank
-      [ 0.0,  -6.8],
-      [-1.8,  -7.5],
+      [-1.4,-9],[-0.8,-11],[1.3,-11.8],[4.4,-11.8],[6.5,-10.8],
+      [7,-8.5],[6.3,-7],[4.8,-6],[4.7,-3.5],[3.6,-3],[2.6,-3.5],
+      [2.5,-6],[0,-7.4],[-1.3,-8]
     ];
 
     const shape = new THREE.Shape();
@@ -375,20 +314,9 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
   // Sandy pebble shore buffer around the lake
   const lakeShoreGeometry = useMemo(() => {
     const shoreContour: [number, number][] = [
-      [-2.8, -9.0],
-      [-2.1, -12.0],
-      [ 0.9, -13.0],
-      [ 4.7, -13.1],
-      [ 8.2, -12.0],
-      [ 8.8,  -8.5],
-      [ 7.6,  -6.2],
-      [ 5.6,  -5.2],
-      [ 5.5,  -2.8],
-      [ 3.6,  -2.1],
-      [ 1.7,  -2.8],
-      [ 1.5,  -5.2],
-      [-0.4,  -6.6],
-      [-2.3,  -7.4],
+      [-1.7,-9],[-1.1,-11.2],[1.3,-12.1],[4.4,-12.1],[6.7,-11],
+      [7.3,-8.5],[6.6,-6.8],[5.1,-5.8],[5,-3.3],[3.6,-2.7],[2.3,-3.3],
+      [2.2,-5.8],[-0.2,-7.1],[-1.6,-7.8]
     ];
 
     const shape = new THREE.Shape();
@@ -467,24 +395,30 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
 
   // ── 4. Trees & Palms (Placed in open lawns with >2.5m path clearance) ──────
   const RAIN_TREES: { x: number; z: number; s: number }[] = [
-    { x: -19, z: -17, s: 1.15 },
+    { x: -16, z: -17, s: 1.15 },
     { x: -20, z:  -6, s: 1.00 },
-    { x: -19, z:  16, s: 1.10 },
-    { x:  19, z:  16, s: 1.20 },
+    { x: -17, z:  14, s: 1.10 },
+    { x:  17, z:  15, s: 1.20 },
     { x:  20, z:  -5, s: 1.05 },
-    { x:  18, z: -17, s: 1.10 },
+    { x:  16, z: -15, s: 1.10 },
     { x:  -8, z:  19, s: 1.05 },
     { x:   8, z:  19, s: 1.15 },
-    { x:  12, z:  -2, s: 0.90 },
+    { x: -12, z: -4, s: 0.80 },
+    { x: -15, z: -2, s: 0.95 },
+    { x: -11, z: -1, s: 0.70 },
+    { x: -7, z: 8, s: 0.65 },
+    { x: -5, z: 9, s: 0.75 },
+    { x: 15, z: -6, s: 0.8 },
+    { x: 17, z: -3, s: 0.9 },
   ];
 
   const PALM_TREES: { x: number; z: number; s: number }[] = [
-    { x: -17, z: -19, s: 1.05 },
+    { x: -12, z: -17, s: 1.05 },
     { x:  -6, z: -16, s: 0.95 },
     { x:  13, z: -16, s: 1.15 },
     { x:  16, z:  -9, s: 0.95 },
     { x: -10, z:  17, s: 1.05 },
-    { x:  16, z:  14, s: 1.10 },
+    { x:  18, z:  10, s: 1.10 },
     { x: -15, z:   4, s: 0.85 },
   ];
 
@@ -505,9 +439,9 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
   const BENCHES: { x: number; z: number; rotY: number }[] = [
     { x: -4.8, z:  -7.0, rotY:  Math.PI / 2 },  // West lake bank, facing east over lake
     { x:  3.5, z: -14.4, rotY:  Math.PI },      // North lake bank, facing south over lake
-    { x:  9.8, z:  -8.5, rotY: -Math.PI / 2 },  // East lake bank, facing west over lake
+    { x: 11.0, z:  -8.5, rotY: -Math.PI / 2 },  // East lake bank, facing west over lake
     { x: -8.5, z:   3.8, rotY:  0.7 },          // West Walking Loop, facing gardens
-    { x:  3.0, z:   1.8, rotY: -1.2 },          // Central Junction seating
+    { x:  4.0, z:   0.2, rotY: -1.2 },          // Central Junction seating
   ];
 
   // ── 6. Pathway Bollard Lamps (Placed 1.3m outside path edge) ───────────────
@@ -515,14 +449,14 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
     [-12.5, -13.5], // North spur
     [ -7.5, -11.8], // North spur
     [ -5.0,  -7.5], // West lake promenade
-    [ -0.8, -13.2], // North lake promenade
-    [  6.5, -13.0], // North-east lake promenade
+    [ -0.8, -15.0], // North lake promenade
+    [  6.5, -15.0], // North-east lake promenade
     [  9.5,  -6.5], // East lake promenade
     [ -0.8,  -3.2], // South of bridge
     [ -6.0,   4.0], // West loop
-    [-11.5,   8.0], // West loop near AS-104
+    [-13.5,   8.0], // West loop near AS-104
     [ -4.0,  14.5], // West loop south arc
-    [  6.5,   4.5], // East exit spur
+    [  7.5,   3.5], // East exit spur
     [ 11.5,   8.5], // East exit spur near AS-105
   ];
 
@@ -531,7 +465,7 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
       {/* ── 1. Park Ground Surface (Visible green lawn, distinct from canvas) */}
       <mesh geometry={parkGroundGeometry} receiveShadow>
         <meshStandardMaterial
-          color={nightMode ? '#193c24' : '#386b43'}
+          color={nightMode ? '#426953' : '#719168'} emissive="#294936" emissiveIntensity={nightMode ? 0.35 : 0.05}
           roughness={0.85}
           metalness={0.03}
           side={THREE.DoubleSide}
@@ -556,7 +490,7 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
       {/* Lake water surface at y = 0.035 */}
       <mesh geometry={lakeShapeGeometry} position={[0, 0.035, 0]}>
         <meshStandardMaterial
-          color={nightMode ? '#0284c7' : '#2ca0c9'}
+          color={nightMode ? '#287f97' : '#479caf'}
           roughness={0.12}
           metalness={0.28}
           emissive={nightMode ? '#0369a1' : '#000000'}
@@ -773,7 +707,7 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
 
       {/* ── 11. Park Identity Label ────────────────────────────────────────── */}
       <Text
-        position={[2.0, 0.08, -19.2]}
+        position={[2.0, 0.08, -17.2]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={1.2}
         color={nightMode ? '#7dd3fc' : '#0369a1'}

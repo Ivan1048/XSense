@@ -1,16 +1,18 @@
 // System page — sensor/lighting status, hybrid device inventory, incident history, insights, and privacy boundaries.
+import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
+import { LIDAR_PLAN_NOTE } from '../data/lidarPlan';
 import StatusLabel from '../components/StatusLabel';
 import { POLES } from '../data/parkData';
 import { usePark } from '../context/ParkContext';
 
 const HYBRID_DEVICE_INVENTORY = [
-  {
-    id: 'CAM-01',
-    kind: 'CCTV Camera',
-    zone: 'North Entrance',
-    mount: 'Gate Archway (Independent)',
-    coverageBasis: 'Estimated viewing cone (Inventory only — no live stream connected)',
-  },
+  ...CCTV_CAMERAS.map(camera => ({
+    id: camera.id,
+    kind: 'CCTV Camera · Inventory only',
+    zone: camera.zoneName,
+    mount: 'Independent camera post',
+    coverageBasis: camera.coverageNote + ' No live feed; visibility unverified.',
+  })),
   {
     id: 'AUD-001',
     kind: 'Audio Node (YAMNet)',
@@ -38,13 +40,6 @@ const HYBRID_DEVICE_INVENTORY = [
     zone: 'West Loop (High-Risk Gap)',
     mount: 'Pole AS-104',
     coverageBasis: 'Co-located with LID-002 for 15s spatio-temporal corroboration',
-  },
-  {
-    id: 'CAM-02',
-    kind: 'CCTV Camera',
-    zone: 'East Exit',
-    mount: 'Perimeter Post (Independent)',
-    coverageBasis: 'Estimated viewing cone (Inventory only — no live stream connected)',
   },
 ];
 
@@ -74,7 +69,7 @@ export default function System() {
       <div className="system-header-row">
         <div>
           <h1 style={{ marginBottom: '4px' }}>System Health &amp; Hybrid Coverage</h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
             Live sensor heartbeats, virtual pathway lighting, independent CCTV/LiDAR/Audio inventory, and privacy boundaries.
           </p>
         </div>
@@ -94,6 +89,9 @@ export default function System() {
         </div>
       </div>
 
+      <div className="notice notice-info" style={{marginBottom: 20}}>
+        <strong>Proposed LiDAR expansion (simulation)</strong><br />{LIDAR_PLAN_NOTE}
+      </div>
       {/* Full-Width 3-Column Top Bento Grid */}
       <div className="system-bento-top">
         {/* Card 1: Pole & Sensor Heartbeat Status */}
@@ -136,7 +134,7 @@ export default function System() {
                     >
                       {pole.id} · {pole.name}
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: '2px' }}>
                       {hasAlert && activeInc
                         ? `⚠ ${activeInc.displayType} (${activeInc.createdAt})`
                         : isOffline
@@ -172,13 +170,13 @@ export default function System() {
                     >
                       {pole.name}
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
                       {pole.id} · {isOffline ? 'Lamp Offline' : `Virtual ${brightness}%`}
                     </div>
                   </div>
                   <span
                     className={`metric-value ${isOffline || isLow ? 'warn' : 'ok'}`}
-                    style={{ fontSize: '12px', fontWeight: 600 }}
+                    style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}
                   >
                     {isOffline
                       ? 'Offline'
@@ -211,7 +209,7 @@ export default function System() {
                 >
                   Central Path Route
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
                   {blockedRouteZone === 'central_path'
                     ? 'Obstruction barrier active — unverified route'
                     : 'Pedestrian pathway open'}
@@ -219,7 +217,7 @@ export default function System() {
               </div>
               <span
                 className={`metric-value ${blockedRouteZone === 'central_path' ? 'warn' : 'ok'}`}
-                style={{ fontSize: '12px', fontWeight: 600 }}
+                style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}
               >
                 {blockedRouteZone === 'central_path' ? '⛔ Route Closed' : 'Open'}
               </span>
@@ -230,7 +228,7 @@ export default function System() {
         {/* Card 3: Hybrid Sensor & CCTV Inventory (Decoupled from Lamps) */}
         <section className="system-section">
           <h2>Hybrid Device Inventory</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 0, marginBottom: '10px' }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: 0, marginBottom: '10px' }}>
             CCTV, LiDAR, and Audio devices carry independent IDs and coverage limits; poles are optional mounts.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -255,12 +253,12 @@ export default function System() {
                       gap: '8px',
                     }}
                   >
-                    <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+                    <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
                       {dev.id} · {dev.kind}
                     </strong>
                     <span
                       style={{
-                        fontSize: '11px',
+                        fontSize: 'var(--text-sm)',
                         color: isOffline ? 'var(--urgent)' : 'var(--accent)',
                         fontWeight: 600,
                       }}
@@ -268,7 +266,7 @@ export default function System() {
                       {dev.zone}
                     </span>
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: '2px' }}>
                     Mount: {dev.mount} · {dev.coverageBasis}
                   </div>
                 </div>
@@ -299,7 +297,7 @@ export default function System() {
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 Active Cases
               </div>
               <div
@@ -321,7 +319,7 @@ export default function System() {
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 Resolved
               </div>
               <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--ok)', marginTop: '4px' }}>
@@ -336,7 +334,7 @@ export default function System() {
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 False Alarms
               </div>
               <div
@@ -358,7 +356,7 @@ export default function System() {
                 border: '1px solid var(--border-subtle)',
               }}
             >
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 Total Logged
               </div>
               <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent)', marginTop: '4px' }}>
@@ -378,7 +376,7 @@ export default function System() {
             Recent Case History &amp; Guard Feedback
           </h3>
           {incidents.length === 0 ? (
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
               No incidents recorded yet. Trigger a scenario from Park Overview to see history here.
             </p>
           ) : (
@@ -402,7 +400,7 @@ export default function System() {
                     <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                       {inc.displayType} — {inc.zoneName} ({inc.poleId})
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: '2px' }}>
                       Logged at {inc.createdAt} · {inc.reason}
                     </div>
                   </div>
@@ -420,7 +418,7 @@ export default function System() {
         {/* Card 5: Operational Safeguards, Honest Limitations & Privacy */}
         <section className="system-section">
           <h2>Privacy &amp; Operational Boundaries</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
             <div>
               <strong style={{ color: 'var(--text-primary)' }}>1. Anonymous LiDAR &amp; Separate Guard Tracking:</strong>{' '}
               LiDAR detections appear strictly as anonymous cyan 3D bounding clusters. Security guards appear via separate reported radio/GPS telemetry and are never identified through LiDAR.

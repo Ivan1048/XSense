@@ -96,7 +96,7 @@ export default function Incidents() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 style={{ marginBottom: '4px' }}>Incidents</h1>
-            <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
               Review possible distress alerts, inspect sensor &amp; camera context, dispatch guards, and record outcomes.
             </p>
           </div>
@@ -161,7 +161,7 @@ export default function Incidents() {
                             marginLeft: '6px',
                             padding: '1px 6px',
                             borderRadius: '999px',
-                            fontSize: '11px',
+                            fontSize: 'var(--text-sm)',
                             background: 'rgba(45, 184, 176, 0.18)',
                             color: 'var(--accent)',
                             border: '1px solid rgba(45, 184, 176, 0.35)',
@@ -211,7 +211,7 @@ export default function Incidents() {
                       <div>
                         <span
                           style={{
-                            fontSize: '13px',
+                            fontSize: 'var(--text-sm)',
                             color: 'var(--text-muted)',
                             fontWeight: 600,
                           }}
@@ -270,7 +270,7 @@ export default function Incidents() {
                             <span>{(selectedIncident.score * 100).toFixed(0)}%</span>
                             <span
                               style={{
-                                fontSize: '12px',
+                                fontSize: 'var(--text-sm)',
                                 fontWeight: 'normal',
                                 color: 'var(--text-muted)',
                               }}
@@ -343,7 +343,7 @@ export default function Incidents() {
                         {assignedGuardsList.length > 0 && (
                           <div
                             className="notice notice-info"
-                            style={{ marginTop: '12px', fontSize: '13px' }}
+                            style={{ marginTop: '12px', fontSize: 'var(--text-sm)' }}
                           >
                             <strong>Assigned Responder(s):</strong>{' '}
                             {assignedGuardsList.map((g) => `${g.displayName} (${g.role})`).join(', ')}{' '}
@@ -482,7 +482,7 @@ export default function Incidents() {
                         <div className="detail-item-label" style={{ marginBottom: '4px' }}>
                           Sensor Observation Basis
                         </div>
-                        <div style={{ fontSize: '14px', color: 'var(--text-primary)', lineHeight: 1.45 }}>
+                        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', lineHeight: 1.45 }}>
                           {selectedIncident.sensorBasis ||
                             'Simulated threshold event logged by park monitoring node.'}
                         </div>
@@ -499,7 +499,7 @@ export default function Incidents() {
                         <div className="detail-item-label" style={{ marginBottom: '4px' }}>
                           Safety Lighting Response
                         </div>
-                        <div style={{ fontSize: '14px', color: '#fde68a', lineHeight: 1.45 }}>
+                        <div style={{ fontSize: 'var(--text-sm)', color: '#fde68a', lineHeight: 1.45 }}>
                           {selectedIncident.lightingResponseNote ||
                             'Standard virtual pathway lighting maintained (70%).'}
                         </div>
@@ -516,7 +516,7 @@ export default function Incidents() {
                         <div className="detail-item-label" style={{ marginBottom: '4px' }}>
                           CCTV Camera Availability
                         </div>
-                        <div style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
                           📹{' '}
                           {selectedIncident.cameraContext ||
                             'No camera view available. On-site check required.'}
