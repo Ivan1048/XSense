@@ -79,11 +79,7 @@ function SummaryStats({
   );
 }
 
-type SelectionTarget =
-  | { type: 'pole'; poleId: string }
-  | { type: 'camera'; cameraId: string }
-  | { type: 'person'; dotIndex: number; approxLocation: string; stationary: boolean }
-  | { type: 'guard'; guardId: string };
+import type { SelectionTarget } from '../types';
 
 type DemoTab = 'lidar' | 'sound' | 'env';
 
@@ -107,6 +103,22 @@ export default function ParkOverview() {
     isRaining,
     resetCounter,
     resetView,
+    mapMode,
+    setMapMode,
+    showCCTV,
+    setShowCCTV,
+    showAudioCoverage,
+    setShowAudioCoverage,
+    showDeviceLabels,
+    setShowDeviceLabels,
+    showLidarPlan,
+    setShowLidarPlan,
+    selectedPlannedLidar,
+    setSelectedPlannedLidar,
+    cameraPose,
+    setCameraPose,
+    overviewSelection: selection,
+    setOverviewSelection: setSelection,
     latestAudioInference,
     latestLidarEval,
     clearLatestResults,
@@ -131,27 +143,12 @@ export default function ParkOverview() {
     sensorsOfflineCount,
   } = usePark();
 
-  const [selection, setSelection] = useState<SelectionTarget>({
-    type: 'pole',
-    poleId: selectedPoleId,
-  });
-
-  // Dual-mode visualization: GIS Tactical Blueprint (default) vs 3D Park Assets
-  const [mapMode, setMapMode] = useState<'blueprint' | 'assets'>('blueprint');
-
-  // Independent Hybrid Map Layer Toggles (Requirement M18)
-  const [showCCTV, setShowCCTV] = useState<boolean>(true);
-
   const [activeTab, setActiveTab] = useState<DemoTab>('lidar');
   const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
   const [analyzingSampleId, setAnalyzingSampleId] = useState<string | null>(null);
   const [isRecordingMic, setIsRecordingMic] = useState<boolean>(false);
   const [micCountdown, setMicCountdown] = useState<number>(3);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
-  const [showDeviceLabels, setShowDeviceLabels] = useState(false);
-  const [showAudioCoverage, setShowAudioCoverage] = useState(false);
-  const [showLidarPlan, setShowLidarPlan] = useState(false);
-  const [selectedPlannedLidar, setSelectedPlannedLidar] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
@@ -506,6 +503,8 @@ export default function ParkOverview() {
               dispatchedGuards={dispatchedGuards}
               onFinishGuardReturn={removeDispatchedGuard}
               resetCounter={resetCounter}
+              cameraPose={cameraPose}
+              onCameraChange={setCameraPose}
             />
             <span className="canvas-stamp" aria-hidden="true">
               {mapMode === 'blueprint'
@@ -554,7 +553,7 @@ export default function ParkOverview() {
             <h2 className="panel-title">LiDAR placement study</h2>
             <p className="plan-explanation">{LIDAR_PLAN_NOTE}</p>
             <label className="form-label" htmlFor="planned-lidar-select">Inspect proposed sensor</label>
-            <select id="planned-lidar-select" className="form-control" value={selectedPlannedLidar} onChange={e => { setSelectedPlannedLidar(e.target.value); setShowLidarPlan(true); }}>
+            <select id="planned-lidar-select" className="form-control" value={selectedPlannedLidar} onChange={e => setSelectedPlannedLidar(e.target.value)}>
               <option value="">Choose a proposed sensor</option>
               {PLANNED_LIDARS.map(sensor => <option key={sensor.id} value={sensor.id}>{sensor.id} · {sensor.area}</option>)}
             </select>

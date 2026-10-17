@@ -1,5 +1,5 @@
 // Main 3D Canvas scene — assembles park geometry, poles, CCTV inventory, coverage gaps, anonymous LiDAR dots, and security guard markers.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { PerspectiveCamera } from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -13,7 +13,8 @@ import AnonymousDot from './AnonymousDot';
 import GuardMarker from './GuardMarker';
 import CameraAndGapOverlay from './CameraAndGapOverlay';
 import { POLES, PEOPLE_PATHS } from '../../data/parkData';
-import type { LightingMap, DispatchedGuardState } from '../../types';
+import type { LightingMap, DispatchedGuardState, CameraPose } from '../../types';
+import { DEFAULT_CAMERA_POSE } from '../../types';
 
 interface SceneProps {
   mapMode?: 'blueprint' | 'assets';
@@ -43,9 +44,11 @@ interface SceneProps {
   dispatchedGuards?: DispatchedGuardState[];
   onFinishGuardReturn?: (guardId: string) => void;
   resetCounter: number;
+  cameraPose?: CameraPose;
+  onCameraChange?: (pose: CameraPose) => void;
 }
 
-interface WorldProps extends Omit<SceneProps, 'resetCounter'> {}
+interface WorldProps extends Omit<SceneProps, 'resetCounter' | 'cameraPose' | 'onCameraChange'> {}
 
 // Preserve the park's horizontal framing when the viewer becomes narrow.
 function ResponsiveFraming() {
@@ -175,6 +178,132 @@ function World({
   );
 }
 
+interface CameraManagerProps {
+  cameraPose: CameraPose;
+  onCameraChange?: (pose: CameraPose) => void;
+  resetCounter: number;
+}
+
+function CameraManager({
+  cameraPose,
+  onCameraChange,
+  resetCounter,
+}: CameraManagerProps) {
+  const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
+  const lastHandledResetRef = useRef(resetCounter);
+  const latestPoseRef = useRef<CameraPose>(cameraPose);
+
+  // Keep internal ref aligned if external cameraPose updates
+  useEffect(() => {
+    latestPoseRef.current = cameraPose;
+  }, [cameraPose]);
+
+  // Restore camera position and OrbitControls target on initial mount
+  useEffect(() => {
+    if (controlsRef.current) {
+      camera.position.set(cameraPose.position[0], cameraPose.position[1], cameraPose.position[2]);
+      controlsRef.current.target.set(cameraPose.target[0], cameraPose.target[1], cameraPose.target[2]);
+      controlsRef.current.update();
+    }
+  }, []);
+
+  // Handle explicit Reset View clicks; skips on initial mount since lastHandledResetRef starts at resetCounter
+  useEffect(() => {
+    if (resetCounter !== lastHandledResetRef.current) {
+      lastHandledResetRef.current = resetCounter;
+      if (controlsRef.current) {
+        camera.position.set(
+          DEFAULT_CAMERA_POSE.position[0],
+          DEFAULT_CAMERA_POSE.position[1],
+          DEFAULT_CAMERA_POSE.position[2]
+        );
+        controlsRef.current.target.set(
+          DEFAULT_CAMERA_POSE.target[0],
+          DEFAULT_CAMERA_POSE.target[1],
+          DEFAULT_CAMERA_POSE.target[2]
+        );
+        controlsRef.current.update();
+        latestPoseRef.current = DEFAULT_CAMERA_POSE;
+        onCameraChange?.(DEFAULT_CAMERA_POSE);
+      }
+    }
+  }, [resetCounter, onCameraChange, camera]);
+
+  const saveCurrentPose = useCallback(() => {
+    if (!controlsRef.current) return;
+    const pos = camera.position;
+    const tgt = controlsRef.current.target;
+    const newPose: CameraPose = {
+      position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
+      target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
+    };
+    latestPoseRef.current = newPose;
+    onCameraChange?.(newPose);
+  }, [camera, onCameraChange]);
+
+  // Ensure camera pose is saved upon unmount (e.g. internal route navigation)
+  useEffect(() => {
+    return () => {
+      if (controlsRef.current) {
+        const pos = camera.position;
+        const tgt = controlsRef.current.target;
+        onCameraChange?.({
+          position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
+          target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
+        });
+      }
+    };
+  }, [camera, onCameraChange]);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleChange = () => {
+      const pos = camera.position;
+      const tgt = controls.target;
+      latestPoseRef.current = {
+        position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
+        target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
+      };
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        onCameraChange?.(latestPoseRef.current);
+      }, 300);
+    };
+
+    const handleEnd = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      saveCurrentPose();
+    };
+
+    controls.addEventListener('change', handleChange);
+    controls.addEventListener('end', handleEnd);
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      controls.removeEventListener('change', handleChange);
+      controls.removeEventListener('end', handleEnd);
+    };
+  }, [camera, onCameraChange, saveCurrentPose]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enableDamping
+      dampingFactor={0.08}
+      zoomSpeed={0.45}
+      maxPolarAngle={Math.PI / 2.15}
+      minDistance={8}
+      maxDistance={180}
+    />
+  );
+}
+
 export default function Scene({
   mapMode = 'blueprint',
   showDeviceLabels,
@@ -203,30 +332,21 @@ export default function Scene({
   dispatchedGuards = [],
   onFinishGuardReturn,
   resetCounter,
+  cameraPose = DEFAULT_CAMERA_POSE,
+  onCameraChange,
 }: SceneProps) {
-  const controlsRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (resetCounter > 0 && controlsRef.current) {
-      controlsRef.current.reset();
-    }
-  }, [resetCounter]);
-
   return (
     <Canvas
-      camera={{ position: [36, 70, 77], fov: 44 }}
+      camera={{ position: cameraPose.position, fov: 44 }}
       shadows
       gl={{ antialias: true }}
       style={{ width: '100%', height: '100%' }}
     >
       <ResponsiveFraming />
-      <OrbitControls
-        ref={controlsRef}
-        enableDamping
-        dampingFactor={0.06}
-        maxPolarAngle={Math.PI / 2.15}
-        minDistance={8}
-        maxDistance={180}
+      <CameraManager
+        cameraPose={cameraPose}
+        onCameraChange={onCameraChange}
+        resetCounter={resetCounter}
       />
       <World
         mapMode={mapMode}

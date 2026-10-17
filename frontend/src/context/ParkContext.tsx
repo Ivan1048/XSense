@@ -2,12 +2,15 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import type {
   AlertEvent,
   AudioInferenceResult,
+  CameraPose,
   DispatchedGuardState,
   Guard,
   Incident,
   LidarEvaluationResult,
   LightingMap,
+  SelectionTarget,
 } from '../types';
+import { DEFAULT_CAMERA_POSE } from '../types';
 import { POLES, ZONES, GUARDS } from '../data/parkData';
 import { createInitialEvent } from '../data/mockData';
 import {
@@ -55,6 +58,24 @@ interface ParkContextType {
   isRaining: boolean;
   resetCounter: number;
   resetView: () => void;
+
+  // Persisted Map View & Inspection State across Route Navigations
+  mapMode: 'blueprint' | 'assets';
+  setMapMode: React.Dispatch<React.SetStateAction<'blueprint' | 'assets'>>;
+  showCCTV: boolean;
+  setShowCCTV: React.Dispatch<React.SetStateAction<boolean>>;
+  showAudioCoverage: boolean;
+  setShowAudioCoverage: React.Dispatch<React.SetStateAction<boolean>>;
+  showDeviceLabels: boolean;
+  setShowDeviceLabels: React.Dispatch<React.SetStateAction<boolean>>;
+  showLidarPlan: boolean;
+  setShowLidarPlan: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedPlannedLidar: string;
+  setSelectedPlannedLidar: React.Dispatch<React.SetStateAction<string>>;
+  cameraPose: CameraPose;
+  setCameraPose: React.Dispatch<React.SetStateAction<CameraPose>>;
+  overviewSelection: SelectionTarget;
+  setOverviewSelection: React.Dispatch<React.SetStateAction<SelectionTarget>>;
 
   // Latest AI Evaluation Telemetry
   latestAudioInference: AudioInferenceResult | null;
@@ -138,6 +159,19 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => loadSessionState().incidents ?? [],
   );
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+
+  // Persisted Map View & Inspection State across Route Navigations
+  const [mapMode, setMapMode] = useState<'blueprint' | 'assets'>('blueprint');
+  const [showCCTV, setShowCCTV] = useState<boolean>(true);
+  const [showAudioCoverage, setShowAudioCoverage] = useState<boolean>(false);
+  const [showDeviceLabels, setShowDeviceLabels] = useState<boolean>(false);
+  const [showLidarPlan, setShowLidarPlan] = useState<boolean>(false);
+  const [selectedPlannedLidar, setSelectedPlannedLidar] = useState<string>('');
+  const [cameraPose, setCameraPose] = useState<CameraPose>(DEFAULT_CAMERA_POSE);
+  const [overviewSelection, setOverviewSelection] = useState<SelectionTarget>({
+    type: 'pole',
+    poleId: 'AS-103',
+  });
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
@@ -224,6 +258,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const resetView = useCallback(() => {
+    setCameraPose(DEFAULT_CAMERA_POSE);
     setResetCounter((c) => c + 1);
   }, []);
 
@@ -900,6 +935,14 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsRaining(false);
     setSelectedPoleId('AS-103');
     setResetCounter((c) => c + 1);
+    setCameraPose(DEFAULT_CAMERA_POSE);
+    setOverviewSelection({ type: 'pole', poleId: 'AS-103' });
+    setMapMode('blueprint');
+    setShowCCTV(true);
+    setShowAudioCoverage(false);
+    setShowDeviceLabels(false);
+    setShowLidarPlan(false);
+    setSelectedPlannedLidar('');
     setIncidents([]);
     setSelectedIncidentId(null);
     setGuards(GUARDS);
@@ -1475,6 +1518,22 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     darkAreasCount,
     sensorsOfflineCount,
     activeIncidentsCount,
+    mapMode,
+    setMapMode,
+    showCCTV,
+    setShowCCTV,
+    showAudioCoverage,
+    setShowAudioCoverage,
+    showDeviceLabels,
+    setShowDeviceLabels,
+    showLidarPlan,
+    setShowLidarPlan,
+    selectedPlannedLidar,
+    setSelectedPlannedLidar,
+    cameraPose,
+    setCameraPose,
+    overviewSelection,
+    setOverviewSelection,
   };
 
   return <ParkContext.Provider value={value}>{children}</ParkContext.Provider>;

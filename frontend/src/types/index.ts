@@ -189,3 +189,19 @@ export interface FusionEvaluationResult {
   lighting_note: string;
   camera_context: string;
 }
+
+export interface CameraPose {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
+export const DEFAULT_CAMERA_POSE: CameraPose = {
+  position: [36, 70, 77],
+  target: [0, 0, 0],
+};
+
+export type SelectionTarget =
+  | { type: 'pole'; poleId: string }
+  | { type: 'camera'; cameraId: string }
+  | { type: 'person'; dotIndex: number; approxLocation: string; stationary: boolean }
+  | { type: 'guard'; guardId: string };
