@@ -1313,3 +1313,54 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .lidar-plan-toolbar .toggle-label { color: #f4ce88; }
 .plan-explanation { font-size: 15px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
 .plan-explanation:last-child { margin: 12px 0 0; }
+
+/* ── Dual-Mode Map Switcher: GIS Blueprint vs 3D Park Assets ─────── */
+.map-mode-segmented {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(11, 20, 36, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: var(--r-sm);
+  padding: 3px;
+  gap: 3px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.mode-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--t);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.mode-tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mode-tab-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: 700;
+  border-color: #38bdf8;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.45);
+}
+
+.viewer-controls-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(148, 163, 184, 0.3);
+  margin: 0 4px;
+  align-self: center;
+}
+

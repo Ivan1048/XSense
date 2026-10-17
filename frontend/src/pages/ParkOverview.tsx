@@ -136,6 +136,9 @@ export default function ParkOverview() {
     poleId: selectedPoleId,
   });
 
+  // Dual-mode visualization: GIS Tactical Blueprint (default) vs 3D Park Assets
+  const [mapMode, setMapMode] = useState<'blueprint' | 'assets'>('blueprint');
+
   // Independent Hybrid Map Layer Toggles (Requirement M18)
   const [showCCTV, setShowCCTV] = useState<boolean>(true);
 
@@ -290,7 +293,11 @@ export default function ParkOverview() {
       <div className="overview-top">
         <div className="overview-heading">
           <h1>Park Overview</h1>
-          <p>Elmina-inspired park & neighbourhood · Simulated layout</p>
+          <p>
+            {mapMode === 'blueprint'
+              ? 'City of Elmina · GIS Tactical Blueprint (Digital Twin)'
+              : 'City of Elmina · 3D Physical Park Assets & Surroundings'}
+          </p>
         </div>
         <SummaryStats
           needsAttention={needsAttentionCount}
@@ -305,6 +312,34 @@ export default function ParkOverview() {
         <div className="viewer">
           {/* Controls & Layer Toggles overlay (top-left) */}
           <div className="viewer-controls" role="group" aria-label="3D viewer and layer controls">
+            {/* Dual Mode Switcher: GIS Blueprint (Default) vs 3D Park Assets */}
+            <div className="map-mode-segmented" role="tablist" aria-label="Map Mode">
+              <button
+                type="button"
+                role="tab"
+                id="mode-blueprint-btn"
+                aria-selected={mapMode === 'blueprint'}
+                className={`mode-tab-btn ${mapMode === 'blueprint' ? 'active' : ''}`}
+                onClick={() => setMapMode('blueprint')}
+                title="GIS Tactical Blueprint (Operational digital twin with coordinate grid and contours)"
+              >
+                🗺️ GIS Blueprint
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="mode-assets-btn"
+                aria-selected={mapMode === 'assets'}
+                className={`mode-tab-btn ${mapMode === 'assets' ? 'active' : ''}`}
+                onClick={() => setMapMode('assets')}
+                title="3D Park Assets (Physical surroundings, trees, and buildings)"
+              >
+                🌳 3D Park Assets
+              </button>
+            </div>
+
+            <div className="viewer-controls-divider" />
+
             <label className="toggle-label">
               <input
                 type="checkbox"
@@ -444,6 +479,7 @@ export default function ParkOverview() {
           {/* Canvas */}
           <div className="canvas-wrap">
             <Scene
+              mapMode={mapMode}
               showDeviceLabels={showDeviceLabels}
               showLidarPlan={showLidarPlan}
               selectedPlannedLidar={selectedPlannedLidar}
@@ -472,7 +508,9 @@ export default function ParkOverview() {
               resetCounter={resetCounter}
             />
             <span className="canvas-stamp" aria-hidden="true">
-              All positions, viewing cones, and lighting values are simulated/estimated — not real sensor streams
+              {mapMode === 'blueprint'
+                ? 'City of Elmina schematic GIS blueprint — coordinate grid & elevation model for tactical demonstration'
+                : 'All positions, viewing cones, and lighting values are simulated/estimated — not real sensor streams'}
             </span>
           </div>
 
