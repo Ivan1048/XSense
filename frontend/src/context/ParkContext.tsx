@@ -126,6 +126,14 @@ interface ParkContextType {
   darkAreasCount: number;
   sensorsOfflineCount: number;
   activeIncidentsCount: number;
+
+  // Persona Incident Integration
+  reportPersonaObservation: (obs: {
+    type: 'fall' | 'audio_distress';
+    personaIndex: number;
+    worldPos: [number, number];
+    action: string;
+  }) => { detected: boolean; reason: string; incidentId?: string };
 }
 
 const ParkContext = createContext<ParkContextType | undefined>(undefined);
@@ -290,6 +298,156 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setSelectedIncidentId(targetSelectedId);
   }, []);
+
+  // ── Persona Observation Integration Handler ─────────────────────────────
+  const reportPersonaObservation = useCallback(
+    (obs: {
+      type: 'fall' | 'audio_distress';
+      personaIndex: number;
+      worldPos: [number, number];
+      action: string;
+    }): { detected: boolean; reason: string; incidentId?: string } => {
+      const [x, z] = obs.worldPos;
+      const OPERATIONAL_RADIUS_M = 12.0;
+
+      // Find nearest online operational smart pole (AS-101..AS-105)
+      let nearestPole: (typeof POLES)[0] | null = null;
+      let minDistance = Infinity;
+
+      for (const pole of POLES) {
+        if (pole.sensorStatus !== 'online' || pole.id === offlinePoleId) continue;
+        const dx = x - pole.position[0];
+        const dz = z - pole.position[1];
+        const dist = Math.hypot(dx, dz);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestPole = pole;
+        }
+      }
+
+      // Operational sensor coverage check: outside 12m radius = coverage gap!
+      if (!nearestPole || minDistance > OPERATIONAL_RADIUS_M) {
+        return {
+          detected: false,
+          reason: `Coverage Gap: Location [${x.toFixed(1)}, ${z.toFixed(1)}] is outside active sensor radius (${minDistance.toFixed(1)}m > ${OPERATIONAL_RADIUS_M}m to nearest pole ${nearestPole?.id || 'none'}).`,
+        };
+      }
+
+      const pole = nearestPole;
+      const now = new Date().toLocaleTimeString();
+      const nowEpoch = Date.now();
+      const suffix = nowEpoch.toString().slice(-4);
+      const isRouteBlocked = blockedRouteZone === 'central_path';
+      const lightNote = isRouteBlocked
+        ? 'Nearby lights on — route not verified.'
+        : `Nearby Lights On — Local pole ${pole.id} boosted to 100%.`;
+
+      let newIncident: Incident;
+
+      if (obs.type === 'fall') {
+        setFallPoleId(pole.id);
+        setLighting((prev) => ({ ...prev, [pole.id]: 100 }));
+        setLightingNote(lightNote);
+
+        const incId = `INC-${suffix}`;
+        newIncident = {
+          id: incId,
+          createdAt: now,
+          zoneId: pole.zone,
+          zoneName: pole.name,
+          poleId: pole.id,
+          type: 'silent_fall',
+          displayType: 'Unusual Movement (Possible Fall)',
+          priority: 'needs_review',
+          status: 'open',
+          reason: `SIMULATED: Possible fall followed by low movement: 3D cluster height dropped from 1.72m to 0.34m near ${pole.name} (${pole.id}). Reviewable without requiring sound.`,
+          sourceMode: 'simulated',
+          score: 0.86,
+          lightingResponseNote: lightNote,
+          cameraContext:
+            pole.id === 'AS-101'
+              ? 'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
+              : pole.id === 'AS-105'
+              ? 'CAM-02 (East Exit CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
+              : 'No camera view available in this zone. On-site check required.',
+          sensorBasis: `LiDAR cluster height drop: 1.72m → 0.34m | Stationary: >30s near ${pole.id}`,
+          occurrenceCount: 1,
+          lastUpdatedEpoch: nowEpoch,
+          activityTrail: [
+            { time: now, action: `Unusual movement anomaly detected near ${pole.name} (${pole.id})`, actor: 'LiDAR Pipeline' },
+            { time: now, action: lightNote, actor: 'Safety Lighting Response' },
+          ],
+        };
+
+        addEvent(
+          `Possible Fall — ${pole.name} · ${pole.id}`,
+          `SIMULATED: 3D cluster height collapsed to 0.34m near ${pole.name} (${pole.id}). Light raised to 100%. Guard review needed.`,
+          'warning',
+          pole.id,
+          {
+            sourceDevice: `LID-002 · Mounted on ${pole.id}`,
+            sensorBasis: `Height: 0.34m | Drop speed: -1.42 m/s | Distance: ${minDistance.toFixed(1)}m from ${pole.id}`,
+            lightingAction: lightNote,
+            cameraAvailability: newIncident.cameraContext,
+          },
+        );
+      } else {
+        // audio_distress
+        setAcousticPoleId(pole.id);
+        const incId = `INC-${suffix}`;
+        newIncident = {
+          id: incId,
+          createdAt: now,
+          zoneId: pole.zone,
+          zoneName: pole.name,
+          poleId: pole.id,
+          type: 'possible_scream',
+          displayType: 'Possible Distress Sound',
+          priority: 'needs_review',
+          status: 'open',
+          reason: `SIMULATED: Vocal distress acoustic cue logged near ${pole.name} (${pole.id}). Verified via acoustic sensor simulation.`,
+          sourceMode: 'simulated',
+          score: 0.84,
+          lightingResponseNote: 'Normal lighting maintained',
+          cameraContext:
+            pole.id === 'AS-101'
+              ? 'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
+              : pole.id === 'AS-105'
+              ? 'CAM-02 (East Exit CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
+              : 'No camera view available in this zone. On-site check required.',
+          sensorBasis: `Acoustic distress verification at ${pole.id} (YAMNet vocal distress profile)`,
+          occurrenceCount: 1,
+          lastUpdatedEpoch: nowEpoch,
+          activityTrail: [
+            { time: now, action: `Acoustic distress signal detected near ${pole.name} (${pole.id})`, actor: 'Acoustic Pipeline' },
+          ],
+        };
+
+        addEvent(
+          `Distress Sound — ${pole.name} · ${pole.id}`,
+          `SIMULATED: Synthetic acoustic distress cue verified near ${pole.name} (${pole.id}). Guard review needed.`,
+          'warning',
+          pole.id,
+          {
+            sourceDevice: `AUD-001 · Mounted on ${pole.id}`,
+            sensorBasis: `Acoustic distress request verified near ${pole.id}`,
+            lightingAction: 'Normal lighting maintained',
+            cameraAvailability: newIncident.cameraContext,
+          },
+        );
+      }
+
+      upsertSensorIncident(newIncident);
+      setSelectedIncidentId(newIncident.id);
+
+      return {
+        detected: true,
+        reason: `Operational sensor ${pole.id} detected event (${minDistance.toFixed(1)}m away).`,
+        incidentId: newIncident.id,
+      };
+    },
+    [addEvent, blockedRouteZone, offlinePoleId, upsertSensorIncident],
+  );
 
   const resetView = useCallback(() => {
     setCameraView('3d');
@@ -1555,6 +1713,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     triggerUnsafeRoute,
     triggerOffline,
     handleReset,
+    reportPersonaObservation,
     needsAttentionCount,
     darkAreasCount,
     sensorsOfflineCount,

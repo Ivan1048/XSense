@@ -3,6 +3,7 @@ import ParkOverview from './pages/ParkOverview';
 import Incidents from './pages/Incidents';
 import System from './pages/System';
 import ResidentSOS from './pages/ResidentSOS';
+import HumanoidStage1Test from './pages/HumanoidStage1Test';
 import { ParkProvider, usePark } from './context/ParkContext';
 
 function GuardLayout() {
@@ -67,6 +68,8 @@ export default function App() {
     <BrowserRouter>
       <ParkProvider>
         <Routes>
+          {/* Isolated test harness for Stage 1 Humanoid verification */}
+          <Route path="/humanoid-test" element={<HumanoidStage1Test />} />
           {/* Resident SOS — separate mobile-first page at /sos */}
           <Route path="/sos" element={<ResidentSOS />} />
           {/* Guard dashboard — all other routes */}
