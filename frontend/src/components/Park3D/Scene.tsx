@@ -10,8 +10,9 @@ import ParkSurroundings from './ParkSurroundings';
 import TacticalBlueprint from './TacticalBlueprint';
 import LidarPlan from './LidarPlan';
 import AudioCoverage from './AudioCoverage';
-import AnonymousDot from './AnonymousDot';
+import AnonymousHumanoid from './AnonymousHumanoid';
 import GuardMarker from './GuardMarker';
+import PersonaCommandHUD from '../HUD/PersonaCommandHUD';
 import CameraAndGapOverlay from './CameraAndGapOverlay';
 import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState, CameraPose, CameraViewMode } from '../../types';
@@ -201,11 +202,12 @@ function World({
         </mesh>
       )}
 
-      {/* Anonymous Movement Simulation (LiDAR Point Cloud Dots) */}
+      {/* Anonymous Movement Simulation (LiDAR Point Cloud Humanoids) */}
       {PEOPLE_PATHS.map((path, i) => (
-        <AnonymousDot
+        <AnonymousHumanoid
           key={i}
           path={path}
+          personaIndex={i}
           paused={paused}
           highlight={fallPoleId === 'AS-104' && i === 0}
           stationary={fallPoleId === 'AS-104' && i === 0}
@@ -689,51 +691,54 @@ export default function Scene({
   onCameraChange,
 }: SceneProps) {
   return (
-    <Canvas
-      camera={{ position: cameraPose.position, fov: 44 }}
-      shadows
-      gl={{ antialias: true }}
-      style={{ width: '100%', height: '100%' }}
-    >
-      <ResponsiveFraming cameraView={cameraView} selectedSectorId={selectedSectorId} />
-      <CameraRig
-        cameraView={cameraView}
-        selectedSectorId={selectedSectorId}
-        sectorFlyTrigger={sectorFlyTrigger}
-        cameraPose={cameraPose}
-        onCameraChange={onCameraChange}
-        resetCounter={resetCounter}
-      />
-      <World
-        mapMode={mapMode}
-        showStudyPosts={showStudyPosts}
-        showLidarRanges={showLidarRanges}
-        showLidarPlan={showLidarPlan}
-        selectedPlannedLidar={selectedPlannedLidar}
-        onSelectPlannedLidar={onSelectPlannedLidar}
-        selectedPoleId={selectedPoleId}
-        onSelectPole={onSelectPole}
-        onSelectAnonymousDot={onSelectAnonymousDot}
-        onSelectGuard={onSelectGuard}
-        selectedCameraId={selectedCameraId}
-        onSelectCamera={onSelectCamera}
-        lighting={lighting}
-        lightingNote={lightingNote}
-        showAudioCoverage={showAudioCoverage}
-        showDeviceLabels={showDeviceLabels}
-        showCCTV={showCCTV}
-        paused={paused}
-        nightMode={nightMode}
-        fallPoleId={fallPoleId}
-        sosPoleId={sosPoleId}
-        isLookalikeStop={isLookalikeStop}
-        offlinePoleId={offlinePoleId}
-        acousticPoleId={acousticPoleId}
-        blockedRouteZone={blockedRouteZone}
-        isRaining={isRaining}
-        dispatchedGuards={dispatchedGuards}
-        onFinishGuardReturn={onFinishGuardReturn}
-      />
-    </Canvas>
+    <>
+      <Canvas
+        camera={{ position: cameraPose.position, fov: 44 }}
+        shadows
+        gl={{ antialias: true }}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <ResponsiveFraming cameraView={cameraView} selectedSectorId={selectedSectorId} />
+        <CameraRig
+          cameraView={cameraView}
+          selectedSectorId={selectedSectorId}
+          sectorFlyTrigger={sectorFlyTrigger}
+          cameraPose={cameraPose}
+          onCameraChange={onCameraChange}
+          resetCounter={resetCounter}
+        />
+        <World
+          mapMode={mapMode}
+          showStudyPosts={showStudyPosts}
+          showLidarRanges={showLidarRanges}
+          showLidarPlan={showLidarPlan}
+          selectedPlannedLidar={selectedPlannedLidar}
+          onSelectPlannedLidar={onSelectPlannedLidar}
+          selectedPoleId={selectedPoleId}
+          onSelectPole={onSelectPole}
+          onSelectAnonymousDot={onSelectAnonymousDot}
+          onSelectGuard={onSelectGuard}
+          selectedCameraId={selectedCameraId}
+          onSelectCamera={onSelectCamera}
+          lighting={lighting}
+          lightingNote={lightingNote}
+          showAudioCoverage={showAudioCoverage}
+          showDeviceLabels={showDeviceLabels}
+          showCCTV={showCCTV}
+          paused={paused}
+          nightMode={nightMode}
+          fallPoleId={fallPoleId}
+          sosPoleId={sosPoleId}
+          isLookalikeStop={isLookalikeStop}
+          offlinePoleId={offlinePoleId}
+          acousticPoleId={acousticPoleId}
+          blockedRouteZone={blockedRouteZone}
+          isRaining={isRaining}
+          dispatchedGuards={dispatchedGuards}
+          onFinishGuardReturn={onFinishGuardReturn}
+        />
+      </Canvas>
+      <PersonaCommandHUD onSelectPersona={onSelectAnonymousDot} />
+    </>
   );
 }
