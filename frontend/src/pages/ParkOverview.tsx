@@ -11,6 +11,7 @@ import { POLES } from '../data/parkData';
 import { usePark } from '../context/ParkContext';
 import { getAudioSampleFileUrl } from '../services/api';
 import { recordLiveMicToWavBlob } from '../utils/audioWavEncoder';
+import { alertFocusKey, nextFocusAlert } from '../utils/alertFocus';
 
 const BENCHMARK_SAMPLES = [
   {
@@ -81,7 +82,19 @@ function SummaryStats({
 
 import type { SelectionTarget, CameraViewMode } from '../types';
 import type { SectorId } from '../data/sectors';
-import { SECTOR_LIST } from '../data/sectors';
+import { SECTOR_BOUNDS, SECTOR_LIST } from '../data/sectors';
+
+function sectorForAlert(poleId: string) {
+  const configured = SECTOR_LIST.find((sector) => sector.operationalDevices.includes(poleId));
+  if (configured) return configured;
+  const pole = POLES.find((item) => item.id === poleId);
+  if (!pole) return undefined;
+  return SECTOR_LIST.find((sector) => {
+    const bounds = SECTOR_BOUNDS[sector.id];
+    const [x, z] = pole.position;
+    return x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ;
+  });
+}
 
 type DemoTab = 'lidar' | 'sound' | 'env';
 
@@ -163,6 +176,24 @@ export default function ParkOverview() {
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [sectorFlyTrigger, setSectorFlyTrigger] = useState<number>(0);
+  const [autoFocusAlert, setAutoFocusAlert] = useState(false);
+  const previousAlertsRef = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    const locatedIncidents = incidents.filter((incident) => sectorForAlert(incident.poleId));
+    const alert = autoFocusAlert ? nextFocusAlert(locatedIncidents, previousAlertsRef.current) : undefined;
+    previousAlertsRef.current = new Map(incidents.map((incident) => [incident.id, alertFocusKey(incident)]));
+    if (!alert) return;
+
+    // Incident pole is the available location reference in the current data model.
+    // Unknown locations must not send the camera to an unrelated default sector.
+    const sector = sectorForAlert(alert.poleId);
+    if (!sector) return;
+    setSelectedSectorId(sector.id);
+    setSelectedPoleId(alert.poleId);
+    setSelection({ type: 'pole', poleId: alert.poleId });
+    setSectorFlyTrigger((count) => count + 1);
+  }, [autoFocusAlert, incidents, setSelectedSectorId, setSelectedPoleId, setSelection]);
 
   const handleSelectSector = (sectorId: SectorId) => {
     setSelectedSectorId(sectorId);
@@ -436,6 +467,18 @@ export default function ParkOverview() {
 
             {/* Row 2: Tactical navigation */}
             <div className="hud-row hud-row-nav">
+              <label className="toggle-label auto-focus-alert-toggle" htmlFor="auto-focus-alert-toggle" title="Move the map camera to new SOS, fall or distress alerts. Enabling also focuses an existing active alert.">
+                <input
+                  id="auto-focus-alert-toggle"
+                  type="checkbox"
+                  checked={autoFocusAlert}
+                  onChange={(event) => {
+                    if (event.target.checked) previousAlertsRef.current.clear();
+                    setAutoFocusAlert(event.target.checked);
+                  }}
+                />
+                Auto-Focus on Alert
+              </label>
               <div className="hud-group-left sector-nav-scroll" role="tablist" aria-label="Tactical security sectors">
                 <span className="tactical-bar-label">SECTORS:</span>
                 {SECTOR_LIST.map((sector) => {

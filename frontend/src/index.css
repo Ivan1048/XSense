@@ -1423,9 +1423,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 .sector-nav-scroll {
+  min-width: 0;
+  flex: 1 1 0;
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  white-space: nowrap;
+}
+
+.auto-focus-alert-toggle {
+  flex-shrink: 0;
   white-space: nowrap;
 }
 .sector-nav-scroll::-webkit-scrollbar {
