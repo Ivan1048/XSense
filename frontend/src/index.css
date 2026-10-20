@@ -188,6 +188,78 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap;
 }
 
+/* ── Backend Health Status Badge ─────────────────────────────────── */
+.backend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 11px;
+  border-radius: 20px;
+  white-space: nowrap;
+  transition: background var(--t-slow), color var(--t-slow), border-color var(--t-slow);
+}
+
+/* Connected — green */
+.backend-badge--connected {
+  color: var(--ok);
+  background: var(--ok-bg);
+  border: 1px solid rgba(74, 222, 128, 0.30);
+}
+
+/* Offline — yellow/amber */
+.backend-badge--offline {
+  color: var(--needs-review);
+  background: var(--needs-review-bg);
+  border: 1px solid var(--needs-review-border);
+}
+
+/* Checking — neutral muted */
+.backend-badge--checking {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+/* Status dot */
+.backend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Green pulsing dot — connected */
+.backend-dot--connected {
+  background: var(--ok);
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+  animation: backend-pulse-green 2.4s ease-in-out infinite;
+}
+
+/* Amber steady dot — offline */
+.backend-dot--offline {
+  background: var(--needs-review);
+}
+
+/* Muted blinking dot — checking */
+.backend-dot--checking {
+  background: var(--text-muted);
+  animation: backend-blink 1s step-start infinite;
+}
+
+@keyframes backend-pulse-green {
+  0%   { box-shadow: 0 0 0 0   rgba(74, 222, 128, 0.55); }
+  60%  { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(74, 222, 128, 0); }
+}
+
+@keyframes backend-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
 .guard-main { flex: 1; overflow: hidden; }
 
 /* ── Park Overview Layout ─────────────────────────────────────────── */
