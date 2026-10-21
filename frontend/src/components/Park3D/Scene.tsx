@@ -224,6 +224,7 @@ function World({
           guardId={dg.guardId}
           guardName={dg.guardName}
           targetPos={dg.targetPos}
+          targetPoleId={dg.targetPoleId}
           status={dg.status}
           onSelect={() => onSelectGuard?.(dg.guardId)}
           onFinishedReturn={() => onFinishGuardReturn?.(dg.guardId)}
