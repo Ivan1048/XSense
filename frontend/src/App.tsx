@@ -5,6 +5,7 @@ import System from './pages/System';
 import ResidentSOS from './pages/ResidentSOS';
 import HumanoidStage1Test from './pages/HumanoidStage1Test';
 import { ParkProvider, usePark } from './context/ParkContext';
+import BackendStatusBadge from './components/BackendStatusBadge';
 
 function GuardLayout() {
   const { activeIncidentsCount } = usePark();
@@ -46,6 +47,7 @@ function GuardLayout() {
         </nav>
 
         <div className="header-right">
+          <BackendStatusBadge />
           <span className="demo-badge" role="status" aria-label="Demo mode — all sensor data is simulated">
             DEMO MODE — Simulated sensor data
           </span>
