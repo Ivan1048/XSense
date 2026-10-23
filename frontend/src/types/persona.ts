@@ -67,6 +67,7 @@ export interface PersonaRuntimeState {
   personaId: PersonaId;
   personaIndex: number;
   label: string;
+  anonymousClusterId: string;
   fsmState: PersonaFsmState;
   currentAction: PersonaActionType;
   worldPosition: [number, number, number];
@@ -74,6 +75,11 @@ export interface PersonaRuntimeState {
   stationaryDurationSec: number;
   supportedActions: PersonaActionType[];
   isAutonomousSchedulable: boolean;
+  waypointIndex: number;
+  movementProgress: number;
+  actionPhase: number;
+  movementSpeed: number;
+  lastUpdateTimestamp: number;
 }
 
 export interface PersonaActionCommand {

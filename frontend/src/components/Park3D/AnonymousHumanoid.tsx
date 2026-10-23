@@ -4,7 +4,11 @@ import * as THREE from 'three';
 import { Edges, Html } from '@react-three/drei';
 import type { AnonymousHumanoidProps, PersonaActionType } from '../../types/persona';
 import { PERSONA_DEFINITIONS } from '../../data/personaData';
-import { usePersonaStateMachine } from '../../hooks/usePersonaStateMachine';
+import {
+  usePersonaStateMachine,
+  updatePersonaPosition,
+  validatePersonaPosition,
+} from '../../hooks/usePersonaStateMachine';
 import { ChildCompanion, CanineCompanion } from './CompanionPrimitives';
 
 // ── Shared Static Geometries ────────────────────────────────────────────────
@@ -104,10 +108,11 @@ export default function AnonymousHumanoid({
   const showPostureBox = hovered || isLookalikeStop || isEmergency;
 
   // Root vertical height tracker (0.86m nominal waist height)
-  const currentY = useRef(0.86);
-  const progressRef = useRef(path.offset);
-  const gaitPhaseRef = useRef(0);
-  const currentYawRef = useRef(0);
+  const currentY = useRef(runtimeState?.worldPosition?.[1] ?? 0.86);
+  // Persisted progress & kinematics initialized from authoritative runtimeState
+  const progressRef = useRef(runtimeState?.movementProgress ?? path.offset);
+  const gaitPhaseRef = useRef(runtimeState?.actionPhase ?? 0);
+  const currentYawRef = useRef(runtimeState?.headingAngleRad ?? 0);
   const jumpingJackPhaseRef = useRef(0);
 
   // Smooth CatmullRom spline
@@ -118,17 +123,28 @@ export default function AnonymousHumanoid({
   }, [path.waypoints]);
 
   const initialPos = useMemo<[number, number, number]>(() => {
+    if (
+      runtimeState?.worldPosition &&
+      Math.hypot(runtimeState.worldPosition[0], runtimeState.worldPosition[2]) > 0.05
+    ) {
+      return [
+        runtimeState.worldPosition[0],
+        runtimeState.worldPosition[1],
+        runtimeState.worldPosition[2],
+      ];
+    }
     if (curve) {
-      const pt = curve.getPointAt(path.offset % 1);
+      const pt = curve.getPointAt((runtimeState?.movementProgress ?? path.offset) % 1);
       return [pt.x, 0.86, pt.z];
     }
-    const angle = (path.offset * Math.PI * 2) % (Math.PI * 2);
+    const angle =
+      ((runtimeState?.movementProgress ?? path.offset) * Math.PI * 2) % (Math.PI * 2);
     return [
       path.x + Math.cos(angle) * path.radius,
       0.86,
       path.z + Math.sin(angle) * path.radius * 0.65,
     ];
-  }, [curve, path.x, path.z, path.radius, path.offset]);
+  }, [curve, path.x, path.z, path.radius, path.offset, runtimeState]);
 
   // Color tokens
   const color = isEmergency ? (isSignalingHelp ? '#ef4444' : '#ffb759') : '#5ee6da';
@@ -193,8 +209,9 @@ export default function AnonymousHumanoid({
     const delta = Math.min(rawDelta, 0.1);
     // Collapsed runtime position is the ground truth used by the detection gate.
     if (runtimeState?.fsmState === 'collapsed') {
-      groupRef.current.position.x = runtimeState.worldPosition[0];
-      groupRef.current.position.z = runtimeState.worldPosition[2];
+      const validCollapsed = validatePersonaPosition(resolvedIndex, runtimeState.worldPosition);
+      groupRef.current.position.x = validCollapsed[0];
+      groupRef.current.position.z = validCollapsed[2];
     }
     const curX = groupRef.current.position.x;
     const curZ = groupRef.current.position.z;
@@ -218,11 +235,6 @@ export default function AnonymousHumanoid({
 
     currentY.current = THREE.MathUtils.damp(currentY.current, targetY, 6.0, delta);
     groupRef.current.position.y = currentY.current;
-
-    // Sync world position into runtimeState
-    if (runtimeState) {
-      runtimeState.worldPosition = [curX, currentY.current, curZ];
-    }
 
     // ── 2. SOS Pulse Ring ───────────────────────────────────────────────────
     if (isSignalingHelp && sosRingRef.current) {
@@ -267,6 +279,24 @@ export default function AnonymousHumanoid({
       }
 
       gaitPhaseRef.current += delta * effectiveSpeed * 8.5;
+
+      updatePersonaPosition(
+        resolvedIndex,
+        progressRef.current,
+        [groupRef.current.position.x, currentY.current, groupRef.current.position.z],
+        currentYawRef.current,
+        gaitPhaseRef.current,
+        effectiveSpeed,
+      );
+    } else {
+      updatePersonaPosition(
+        resolvedIndex,
+        progressRef.current,
+        [groupRef.current.position.x, currentY.current, groupRef.current.position.z],
+        currentYawRef.current,
+        gaitPhaseRef.current,
+        0,
+      );
     }
 
     // ── 4. Canonical Target Pose Calculation (Zero Overlapping Poses) ────────
