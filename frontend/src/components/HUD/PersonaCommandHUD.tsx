@@ -439,14 +439,14 @@ export default function PersonaCommandHUD({
             }}
           >
             <div style={{ fontWeight: 700, color: '#64748b', marginBottom: 4 }}>
-              GUARD VIEW TELEMETRY (ANONYMOUS & UNIDENTIFIED):
+              SIMULATOR GROUND TRUTH — NOT SENSOR TELEMETRY:
             </div>
-            <div>• Target: LIDAR-P-0{currentPersonaIndex + 1} (Zero identity exposed)</div>
+            <div>• Simulated visitor #{currentPersonaIndex + 1}</div>
             <div>
               • Height: {currentPersona.fsmState === 'collapsed' ? '0.34m (Collapsed)' : '1.72m (Upright)'} · Action: {currentPersona.currentAction}
             </div>
             <div>
-              • Sensor Status: {coverage.detected ? `Monitored by ${coverage.primarySensor?.sensorId}` : 'Outside Coverage'}
+              • Sensor Status: {coverage.detected ? `Monitored by ${coverage.primarySensor?.sensorId}` : 'Not observed by LiDAR'}
             </div>
           </div>
         </div>
