@@ -209,3 +209,25 @@ export type SelectionTarget =
   | { type: 'camera'; cameraId: string }
   | { type: 'person'; dotIndex: number; approxLocation: string; stationary: boolean }
   | { type: 'guard'; guardId: string };
+
+export interface SimulationDiagnosticEntry {
+  id: string;
+  timestamp: string;
+  epochMs: number;
+  eventType: 'coverage_gap_fall' | 'detected_fall' | 'sensor_offline' | 'occlusion_gap';
+  title: string;
+  details: string;
+  personaIndex?: number;
+  worldPosition: [number, number, number];
+  primarySensorId?: string;
+  nearestPoleId?: string;
+  distanceToNearestSensorM: number;
+  failureReason: string;
+  checks: {
+    sensorStatus: { passed: boolean; note: string };
+    range: { passed: boolean; distanceM: number; maxRangeM: number };
+    fieldOfView: { passed: boolean; angleDeg: number; fovDeg: number };
+    lineOfSight: { passed: boolean; occludingObstacle?: string };
+  };
+}
+

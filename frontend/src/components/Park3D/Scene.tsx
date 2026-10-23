@@ -10,6 +10,7 @@ import ParkSurroundings from './ParkSurroundings';
 import TacticalBlueprint from './TacticalBlueprint';
 import LidarPlan from './LidarPlan';
 import AudioCoverage from './AudioCoverage';
+import LidarCoverageOverlay from './LidarCoverageOverlay';
 import AnonymousHumanoid from './AnonymousHumanoid';
 import GuardMarker from './GuardMarker';
 import PersonaCommandHUD from '../HUD/PersonaCommandHUD';
@@ -36,6 +37,9 @@ interface SceneProps {
   showDeviceLabels: boolean;
   showStudyPosts?: boolean;
   showLidarRanges?: boolean;
+  showLidarCoverage?: boolean;
+  selectedLidarId?: string | null;
+  onSelectLidar?: (id: string) => void;
   showLidarPlan?: boolean;
   selectedPlannedLidar: string;
   onSelectPlannedLidar: (id: string) => void;
@@ -114,7 +118,11 @@ function World({
   selectedCameraId = null,
   onSelectCamera,
   lighting,
+  lightingNote,
   showAudioCoverage,
+  showLidarCoverage = true,
+  selectedLidarId = null,
+  onSelectLidar,
   showCCTV = true,
   paused,
   nightMode,
@@ -164,6 +172,16 @@ function World({
         </>
       )}
 
+      {/* Authoritative Operational LiDAR Coverage Overlay (with FOV and shadow cutouts) */}
+      <LidarCoverageOverlay
+        showCoverage={showLidarCoverage}
+        showLabels={showDeviceLabels}
+        offlinePoleId={offlinePoleId}
+        blockedRouteZone={blockedRouteZone}
+        selectedSensorId={selectedLidarId}
+        onSelectSensor={onSelectLidar}
+      />
+
       {showAudioCoverage && <AudioCoverage showLabels={showDeviceLabels} />}
       <LidarPlan
         showPosts={showPosts}
@@ -209,9 +227,8 @@ function World({
           path={path}
           personaIndex={i}
           paused={paused}
-          highlight={fallPoleId === 'AS-104' && i === 0}
-          stationary={fallPoleId === 'AS-104' && i === 0}
-          isCollapsed={fallPoleId === 'AS-104' && i === 0}
+          highlight={false}
+          stationary={false}
           isLookalikeStop={isLookalikeStop && i === 0}
           isSOS={Boolean(sosPole) && i === 1}
           sosTargetPos={sosPole ? sosPole.position : null}
@@ -675,6 +692,9 @@ export default function Scene({
   lighting,
   lightingNote,
   showAudioCoverage,
+  showLidarCoverage = true,
+  selectedLidarId = null,
+  onSelectLidar,
   showCCTV = true,
   paused,
   nightMode,
@@ -712,6 +732,9 @@ export default function Scene({
           mapMode={mapMode}
           showStudyPosts={showStudyPosts}
           showLidarRanges={showLidarRanges}
+          showLidarCoverage={showLidarCoverage}
+          selectedLidarId={selectedLidarId}
+          onSelectLidar={onSelectLidar}
           showLidarPlan={showLidarPlan}
           selectedPlannedLidar={selectedPlannedLidar}
           onSelectPlannedLidar={onSelectPlannedLidar}

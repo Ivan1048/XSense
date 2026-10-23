@@ -10,6 +10,7 @@ import type {
   LidarEvaluationResult,
   LightingMap,
   SelectionTarget,
+  SimulationDiagnosticEntry,
 } from '../types';
 import { DEFAULT_CAMERA_POSE } from '../types';
 import type { SectorId } from '../data/sectors';
@@ -22,6 +23,8 @@ import {
   evaluateLidarScenario,
   evaluateSensorFusion,
 } from '../services/api';
+import { stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
+import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 
 interface ParkContextType {
   // Incidents
@@ -75,6 +78,12 @@ interface ParkContextType {
   setShowStudyPosts: React.Dispatch<React.SetStateAction<boolean>>;
   showLidarRanges: boolean;
   setShowLidarRanges: React.Dispatch<React.SetStateAction<boolean>>;
+  showLidarCoverage: boolean;
+  setShowLidarCoverage: React.Dispatch<React.SetStateAction<boolean>>;
+  selectedLidarId: string | null;
+  setSelectedLidarId: React.Dispatch<React.SetStateAction<string | null>>;
+  simulationDiagnostics: SimulationDiagnosticEntry[];
+  clearSimulationDiagnostics: () => void;
   showLidarPlan: boolean;
   setShowLidarPlan: React.Dispatch<React.SetStateAction<boolean>>;
   selectedPlannedLidar: string;
@@ -159,6 +168,7 @@ function loadSessionState(): {
 }
 
 export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { resetAllPersonas } = usePersonaStateMachine(true);
   const [selectedPoleId, setSelectedPoleId] = useState<string>('AS-103');
   const [lighting, setLighting] = useState<LightingMap>(initialLighting);
   const [lightingNote, setLightingNote] = useState<string>('');
@@ -190,6 +200,13 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showDeviceLabels, setShowDeviceLabels] = useState<boolean>(false);
   const [showStudyPosts, setShowStudyPosts] = useState<boolean>(false);
   const [showLidarRanges, setShowLidarRanges] = useState<boolean>(false);
+  const [showLidarCoverage, setShowLidarCoverage] = useState<boolean>(true);
+  const [selectedLidarId, setSelectedLidarId] = useState<string | null>(null);
+  const [simulationDiagnostics, setSimulationDiagnostics] = useState<SimulationDiagnosticEntry[]>([]);
+
+  const clearSimulationDiagnostics = useCallback(() => {
+    setSimulationDiagnostics([]);
+  }, []);
   const [selectedPlannedLidar, setSelectedPlannedLidar] = useState<string>('');
   const [perspPose, setPerspPose] = useState<CameraPose>(OVERVIEW_PERSPECTIVE_POSE);
   const [radarPose, setRadarPose] = useState<CameraPose>(OVERVIEW_RADAR_POSE);
@@ -325,15 +342,19 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Operational sensor coverage check: outside 12m radius = coverage gap!
-      if (!nearestPole || minDistance > OPERATIONAL_RADIUS_M) {
+      // Audio simulation retains its legacy pole-radius gate.
+      // Fall observations are gated exclusively by the authoritative LiDAR
+      // range/FOV/LOS engine below, not by this legacy smart-pole radius.
+      if (obs.type === 'audio_distress' && (!nearestPole || minDistance > OPERATIONAL_RADIUS_M)) {
         return {
           detected: false,
           reason: `Coverage Gap: Location [${x.toFixed(1)}, ${z.toFixed(1)}] is outside active sensor radius (${minDistance.toFixed(1)}m > ${OPERATIONAL_RADIUS_M}m to nearest pole ${nearestPole?.id || 'none'}).`,
         };
       }
 
-      const pole = nearestPole;
+      // The fall branch determines its own valid LiDAR-mounted pole.
+      // Acoustic observations require the checked nearest online pole.
+      const pole = nearestPole ?? POLES[0];
       const now = new Date().toLocaleTimeString();
       const nowEpoch = Date.now();
       const suffix = nowEpoch.toString().slice(-4);
@@ -345,52 +366,150 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let newIncident: Incident;
 
       if (obs.type === 'fall') {
-        setFallPoleId(pole.id);
-        setLighting((prev) => ({ ...prev, [pole.id]: 100 }));
-        setLightingNote(lightNote);
+        // Authoritative geometric LiDAR fall evaluation
+        const evalResult = evaluateCollapseAgainstAllLidars([x, 0.34, z], offlinePoleId, blockedRouteZone);
+
+        if (!evalResult.detected) {
+          // COVERAGE GAP — Fall Not Detected by LiDAR
+          // Explicitly do not trigger incident, alert, or lighting response
+          setLatestLidarEval({
+            scenario_kind: 'silent_fall',
+            device_id: evalResult.nearestPoleId === 'AS-103' ? 'LID-001' : 'LID-002',
+            zone_id: 'coverage_gap',
+            pole_id: evalResult.nearestPoleId || 'none',
+            source_mode: 'simulated',
+            detected: false,
+            trigger_incident: false,
+            event_type: 'coverage_gap_missed',
+            priority: 'coverage_warning',
+            plain_label: 'Coverage Gap — Fall Not Detected by LiDAR',
+            plain_reason: evalResult.failureReason,
+            kinematics: {
+              initial_height_m: 1.72,
+              final_height_m: 0.34,
+              drop_speed_mps: -1.42,
+              horizontal_speed_mps: 0.0,
+              aspect_ratio: 0.21,
+              stationary_seconds: 45,
+              box_dimensions_m: [1.65, 0.34, 0.60],
+            },
+            lighting_boost_pct: null,
+            lighting_note: 'No automatic light boost (Coverage Gap — Fall Not Detected by LiDAR).',
+            camera_context: 'No camera view available in unmonitored zone. On-site check required.',
+          });
+
+          // Record in simulation diagnostics
+          const diagEntry: SimulationDiagnosticEntry = {
+            id: `DIAG-${nowEpoch}-${Math.floor(Math.random() * 1000)}`,
+            timestamp: now,
+            epochMs: nowEpoch,
+            eventType: 'coverage_gap_fall',
+            title: 'Coverage Gap — Fall Not Detected by LiDAR',
+            details: evalResult.diagnosticDetails,
+            personaIndex: obs.personaIndex,
+            worldPosition: [x, 0.34, z],
+            primarySensorId: undefined,
+            nearestPoleId: evalResult.nearestPoleId,
+            distanceToNearestSensorM: evalResult.distanceToNearestSensorM,
+            failureReason: evalResult.failureReason,
+            checks: evalResult.allSensorEvaluations.find(s => s.poleId === evalResult.nearestPoleId)?.checks || {
+              sensorStatus: { passed: false, note: 'Offline' },
+              range: { passed: false, distanceM: minDistance, maxRangeM: 13.0 },
+              fieldOfView: { passed: false, angleDeg: 0, fovDeg: 0 },
+              lineOfSight: { passed: false },
+            },
+          };
+          setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
+
+          return {
+            detected: false,
+            reason: `Coverage Gap — Fall Not Detected by LiDAR: ${evalResult.failureReason}`,
+          };
+        }
+
+        // VALID LIDAR FALL DETECTED (All geometric and status conditions passed)
+        const primary = evalResult.primarySensor!;
+        const pole = POLES.find((p) => p.id === primary.poleId) || nearestPole || POLES[3];
+        setFallPoleId(primary.poleId);
+        setLighting((prev) => ({ ...prev, [primary.poleId]: 100 }));
+        const detectedLightNote = isRouteBlocked
+          ? 'Nearby lights on — route not verified.'
+          : `Nearby Lights On — Local pole ${primary.poleId} boosted to 100%.`;
+        setLightingNote(detectedLightNote);
 
         const incId = `INC-${suffix}`;
+        const sourceDev = evalResult.corroboratingSensors.length > 0
+          ? `${primary.sensorId} + ${evalResult.corroboratingSensors.map((c) => c.sensorId).join(', ')} · Mounted on ${primary.poleId}`
+          : `${primary.sensorId} · Mounted on ${primary.poleId}`;
+
         newIncident = {
           id: incId,
           createdAt: now,
-          zoneId: pole.zone,
-          zoneName: pole.name,
-          poleId: pole.id,
+          zoneId: primary.zoneId,
+          zoneName: primary.zoneName,
+          poleId: primary.poleId,
           type: 'silent_fall',
           displayType: 'Unusual Movement (Possible Fall)',
           priority: 'needs_review',
           status: 'open',
-          reason: `SIMULATED: Possible fall followed by low movement: 3D cluster height dropped from 1.72m to 0.34m near ${pole.name} (${pole.id}). Reviewable without requiring sound.`,
+          reason: `SIMULATED: 3D cluster height collapsed from 1.72m to 0.34m near ${primary.poleId} (${primary.distanceM}m away). Reviewable without requiring sound.`,
           sourceMode: 'simulated',
           score: 0.86,
-          lightingResponseNote: lightNote,
+          lightingResponseNote: detectedLightNote,
           cameraContext:
-            pole.id === 'AS-101'
+            primary.poleId === 'AS-101'
               ? 'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
-              : pole.id === 'AS-105'
+              : primary.poleId === 'AS-105'
               ? 'CAM-02 (East Exit CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
               : 'No camera view available in this zone. On-site check required.',
-          sensorBasis: `LiDAR cluster height drop: 1.72m → 0.34m | Stationary: >30s near ${pole.id}`,
+          sensorBasis: `LiDAR cluster height drop: 1.72m → 0.34m | Distance: ${primary.distanceM}m from ${primary.poleId} (${primary.sensorId}) | LOS: Verified Clear`,
           occurrenceCount: 1,
           lastUpdatedEpoch: nowEpoch,
           activityTrail: [
-            { time: now, action: `Unusual movement anomaly detected near ${pole.name} (${pole.id})`, actor: 'LiDAR Pipeline' },
-            { time: now, action: lightNote, actor: 'Safety Lighting Response' },
+            { time: now, action: `Unusual movement anomaly verified by ${primary.sensorId} near ${primary.poleId}`, actor: 'LiDAR Pipeline' },
+            { time: now, action: detectedLightNote, actor: 'Safety Lighting Response' },
           ],
         };
 
         addEvent(
-          `Possible Fall — ${pole.name} · ${pole.id}`,
-          `SIMULATED: 3D cluster height collapsed to 0.34m near ${pole.name} (${pole.id}). Light raised to 100%. Guard review needed.`,
+          `Possible Fall — ${primary.zoneName} · ${primary.poleId}`,
+          `SIMULATED: 3D cluster height collapsed to 0.34m observed by ${primary.sensorId}. Light raised to 100%. Guard review needed.`,
           'warning',
-          pole.id,
+          primary.poleId,
           {
-            sourceDevice: `LID-002 · Mounted on ${pole.id}`,
-            sensorBasis: `Height: 0.34m | Drop speed: -1.42 m/s | Distance: ${minDistance.toFixed(1)}m from ${pole.id}`,
-            lightingAction: lightNote,
+            sourceDevice: sourceDev,
+            sensorBasis: `Height: 0.34m | Drop speed: -1.42 m/s | Distance: ${primary.distanceM}m from ${primary.poleId}`,
+            lightingAction: detectedLightNote,
             cameraAvailability: newIncident.cameraContext,
           },
         );
+
+        upsertSensorIncident(newIncident);
+        setSelectedIncidentId(newIncident.id);
+
+        // Record successful detection in simulation diagnostics
+        const diagEntry: SimulationDiagnosticEntry = {
+          id: `DIAG-${nowEpoch}-${Math.floor(Math.random() * 1000)}`,
+          timestamp: now,
+          epochMs: nowEpoch,
+          eventType: 'detected_fall',
+          title: `Fall Detected by LiDAR · ${primary.sensorId}`,
+          details: evalResult.diagnosticDetails,
+          personaIndex: obs.personaIndex,
+          worldPosition: [x, 0.34, z],
+          primarySensorId: primary.sensorId,
+          nearestPoleId: primary.poleId,
+          distanceToNearestSensorM: primary.distanceM,
+          failureReason: '',
+          checks: primary.checks,
+        };
+        setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
+
+        return {
+          detected: true,
+          reason: `Operational sensor ${primary.sensorId} detected fall (${primary.distanceM}m away).`,
+          incidentId: newIncident.id,
+        };
       } else {
         // audio_distress
         setAcousticPoleId(pole.id);
@@ -448,6 +567,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     [addEvent, blockedRouteZone, offlinePoleId, upsertSensorIncident],
   );
+
+  useEffect(() => subscribePersonaObservations(reportPersonaObservation), [reportPersonaObservation]);
 
   const resetView = useCallback(() => {
     setCameraView('3d');
@@ -535,13 +656,18 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return evalResult;
   }, [addEvent, blockedRouteZone, offlinePoleId]);
 
-  // 1b. Silent Possible Fall (AS-104) — Reviewable without sound + 100% local light boost
+  // 1b. Silent Possible Fall (AS-104) — Gated by authoritative LiDAR sensing geometry
   const triggerSilentFall = useCallback(async (): Promise<LidarEvaluationResult> => {
     setIsLookalikeStop(false);
-    setFallPoleId('AS-104');
     setSelectedPoleId('AS-104');
 
+    const targetPos: [number, number, number] = [-11.0, 0.34, 9.5];
+    stageDemoCollapse(0, targetPos);
     const isRouteBlocked = blockedRouteZone === 'central_path';
+
+    // Authoritative geometric evaluation check
+    const evalGeo = evaluateCollapseAgainstAllLidars(targetPos, offlinePoleId, blockedRouteZone);
+
     let evalResult: LidarEvaluationResult;
     try {
       const apiRes = await evaluateLidarScenario(
@@ -549,8 +675,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'LID-002',
         'west_path',
         'AS-104',
-        offlinePoleId === 'AS-104',
+        offlinePoleId === 'AS-104' || !evalGeo.detected,
         isRouteBlocked,
+        [-11.0, 9.5],
       );
       evalResult = apiRes.evaluation;
     } catch {
@@ -563,14 +690,15 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         zone_id: 'west_path',
         pole_id: 'AS-104',
         source_mode: 'simulated',
-        detected: true,
-        trigger_incident: true,
-        event_type: 'silent_fall',
-        priority: 'needs_review',
+        detected: evalGeo.detected,
+        trigger_incident: evalGeo.detected,
+        event_type: evalGeo.detected ? 'silent_fall' : 'coverage_gap_missed',
+        priority: evalGeo.detected ? 'needs_review' : 'coverage_warning',
         score: 0.86,
-        plain_label: 'Unusual Movement (Possible Fall)',
-        plain_reason:
-          'Possible fall followed by prolonged low movement: 3D cluster height dropped from 1.72m to 0.34m (-1.42 m/s) and remained motionless on the ground for 45s. Reviewable without requiring sound.',
+        plain_label: evalGeo.detected ? 'Unusual Movement (Possible Fall)' : 'Coverage Gap — Fall Not Detected by LiDAR',
+        plain_reason: evalGeo.detected
+          ? 'Possible fall followed by prolonged low movement: 3D cluster height dropped from 1.72m to 0.34m (-1.42 m/s) and remained motionless on the ground for 45s. Reviewable without requiring sound.'
+          : evalGeo.failureReason,
         kinematics: {
           initial_height_m: 1.72,
           final_height_m: 0.34,
@@ -580,18 +708,61 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           stationary_seconds: 45,
           box_dimensions_m: [1.65, 0.34, 0.60],
         },
-        lighting_boost_pct: 100,
-        lighting_note: fallbackLightNote,
+        lighting_boost_pct: evalGeo.detected ? 100 : null,
+        lighting_note: evalGeo.detected ? fallbackLightNote : 'No automatic light boost (Coverage Gap — Fall Not Detected by LiDAR).',
         camera_context: 'No camera view available (outside CAM-01 / CAM-02 coverage). On-site check required.',
       };
     }
 
+    // A backend response must not present a positive detection after the local gate missed.
+    if (!evalGeo.detected) {
+      evalResult = {
+        ...evalResult, detected: false, trigger_incident: false,
+        event_type: 'coverage_gap_missed', priority: 'coverage_warning',
+        plain_label: evalGeo.diagnosticTitle, plain_reason: evalGeo.failureReason,
+        lighting_boost_pct: null,
+        lighting_note: 'No automatic light boost (Coverage Gap — Fall Not Detected by LiDAR).',
+      };
+    }
+
+    const now = new Date().toLocaleTimeString();
+    const nowEpoch = Date.now();
+
+    // COVERAGE GAP OR SENSOR FAILURE: Do NOT create an incident or boost lighting
+    if (!evalGeo.detected || evalResult.trigger_incident === false) {
+      setFallPoleId(null);
+      setLatestLidarEval(evalResult);
+
+      const diagEntry: SimulationDiagnosticEntry = {
+        id: `DIAG-${nowEpoch}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: now,
+        epochMs: nowEpoch,
+        eventType: 'coverage_gap_fall',
+        title: 'Coverage Gap — Fall Not Detected by LiDAR',
+        details: evalGeo.diagnosticDetails,
+        worldPosition: targetPos,
+        nearestPoleId: evalGeo.nearestPoleId,
+        distanceToNearestSensorM: evalGeo.distanceToNearestSensorM,
+        failureReason: evalGeo.failureReason || evalResult.plain_reason,
+        checks: evalGeo.allSensorEvaluations.find(s => s.poleId === evalGeo.nearestPoleId)?.checks || {
+          sensorStatus: { passed: false, note: 'Offline' },
+          range: { passed: false, distanceM: 0, maxRangeM: 13.0 },
+          fieldOfView: { passed: false, angleDeg: 0, fovDeg: 0 },
+          lineOfSight: { passed: false },
+        },
+      };
+      setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
+
+      return evalResult;
+    }
+
+    // CONDITIONS PASSED: Fall verified by operational LiDAR
+    setFallPoleId('AS-104');
     setLatestLidarEval(evalResult);
     setLighting((prev) => ({ ...prev, 'AS-104': 100 }));
     setLightingNote(evalResult.lighting_note);
 
     const incidentId = `INC-${Date.now().toString().slice(-4)}`;
-    const now = new Date().toLocaleTimeString();
     const basisText = `Height change: ${evalResult.kinematics.initial_height_m}m → ${evalResult.kinematics.final_height_m}m | Drop speed: ${evalResult.kinematics.drop_speed_mps} m/s | Stationary: ${evalResult.kinematics.stationary_seconds}s`;
 
     const newIncident: Incident = {
@@ -630,6 +801,28 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cameraAvailability: evalResult.camera_context,
       },
     );
+
+    // Record verified detection diagnostic
+    const diagEntry: SimulationDiagnosticEntry = {
+      id: `DIAG-${nowEpoch}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: now,
+      epochMs: nowEpoch,
+      eventType: 'detected_fall',
+      title: 'Fall Detected by LiDAR · LID-002',
+      details: evalGeo.diagnosticDetails,
+      worldPosition: targetPos,
+      primarySensorId: 'LID-002',
+      nearestPoleId: 'AS-104',
+      distanceToNearestSensorM: evalGeo.distanceToNearestSensorM,
+      failureReason: '',
+      checks: evalGeo.primarySensor?.checks || {
+        sensorStatus: { passed: true, note: 'Online' },
+        range: { passed: true, distanceM: 2.1, maxRangeM: 13.0 },
+        fieldOfView: { passed: true, angleDeg: 15, fovDeg: 210 },
+        lineOfSight: { passed: true },
+      },
+    };
+    setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
 
     return evalResult;
   }, [addEvent, blockedRouteZone, offlinePoleId, upsertSensorIncident]);
@@ -684,11 +877,43 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 3a. Combined Anomaly (Same Zone AS-104 within 15s) -> Escalates to Urgent (Signals Agree)
   const triggerCombined = useCallback(async () => {
     setIsLookalikeStop(false);
-    setFallPoleId('AS-104');
-    setAcousticPoleId('AS-104');
     setSelectedPoleId('AS-104');
 
+    const targetPos: [number, number, number] = [-11.0, 0.34, 9.5];
+    stageDemoCollapse(0, targetPos);
     const isRouteBlocked = blockedRouteZone === 'central_path';
+
+    // Verify LiDAR fall detection geometry before corroborating
+    const evalGeo = evaluateCollapseAgainstAllLidars(targetPos, offlinePoleId, blockedRouteZone);
+    if (!evalGeo.detected) {
+      setAcousticPoleId('AS-104');
+      setFallPoleId(null);
+      const now = new Date().toLocaleTimeString();
+      const nowEpoch = Date.now();
+      const diagEntry: SimulationDiagnosticEntry = {
+        id: `DIAG-${nowEpoch}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: now,
+        epochMs: nowEpoch,
+        eventType: 'coverage_gap_fall',
+        title: 'Coverage Gap — Fall Not Detected by LiDAR',
+        details: `Combined signals could not corroborate at West Loop: ${evalGeo.failureReason}. Urgent escalation prevented.`,
+        worldPosition: targetPos,
+        nearestPoleId: evalGeo.nearestPoleId,
+        distanceToNearestSensorM: evalGeo.distanceToNearestSensorM,
+        failureReason: evalGeo.failureReason,
+        checks: evalGeo.allSensorEvaluations.find(s => s.poleId === evalGeo.nearestPoleId)?.checks || {
+          sensorStatus: { passed: false, note: 'Offline' },
+          range: { passed: false, distanceM: 0, maxRangeM: 13.0 },
+          fieldOfView: { passed: false, angleDeg: 0, fovDeg: 0 },
+          lineOfSight: { passed: false },
+        },
+      };
+      setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
+      return;
+    }
+
+    setFallPoleId('AS-104');
+    setAcousticPoleId('AS-104');
     let lightNote = isRouteBlocked
       ? 'Nearby lights on — route not verified.'
       : 'Nearby Lights On — Local pole AS-104 boosted to 100%.';
@@ -1109,6 +1334,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 9. Reset All Scenarios
   const handleReset = useCallback(() => {
+    resetAllPersonas();
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -1141,6 +1367,9 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShowDeviceLabels(false);
     setShowStudyPosts(false);
     setShowLidarRanges(false);
+    setShowLidarCoverage(true);
+    setSelectedLidarId(null);
+    setSimulationDiagnostics([]);
     setSelectedPlannedLidar('');
     setIncidents([]);
     setSelectedIncidentId(null);
@@ -1730,6 +1959,12 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setShowStudyPosts,
     showLidarRanges,
     setShowLidarRanges,
+    showLidarCoverage,
+    setShowLidarCoverage,
+    selectedLidarId,
+    setSelectedLidarId,
+    simulationDiagnostics,
+    clearSimulationDiagnostics,
     showLidarPlan,
     setShowLidarPlan,
     selectedPlannedLidar,

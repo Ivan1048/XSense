@@ -130,6 +130,12 @@ export default function ParkOverview() {
     setShowStudyPosts,
     showLidarRanges,
     setShowLidarRanges,
+    showLidarCoverage,
+    setShowLidarCoverage,
+    selectedLidarId,
+    setSelectedLidarId,
+    simulationDiagnostics,
+    clearSimulationDiagnostics,
     showLidarPlan,
     setShowLidarPlan,
     selectedPlannedLidar,
@@ -433,6 +439,12 @@ export default function ParkOverview() {
                   />
                   Audio sensing
                 </label>
+                <label className="toggle-label" htmlFor="operational-lidar-toggle" title="Simulated LiDAR range, field of view and obstacle shadows">
+                  <input type="checkbox" checked={showLidarCoverage}
+                    onChange={(e) => setShowLidarCoverage(e.target.checked)}
+                    id="operational-lidar-toggle" />
+                  LiDAR areas
+                </label>
                 <label className="toggle-label" htmlFor="pause-toggle">
                   <input
                     type="checkbox"
@@ -580,6 +592,19 @@ export default function ParkOverview() {
               </div>
             )}
 
+            {simulationDiagnostics.length > 0 && (
+              <div role="log" aria-label="Simulation diagnostics" style={{padding:'10px 14px', background:'rgba(15,23,42,0.94)', color:'#e2e8f0', fontSize:12, maxHeight:160, overflowY:'auto'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                  <strong>Simulation Diagnostics (not live sensor events)</strong>
+                  <button type="button" onClick={clearSimulationDiagnostics} aria-label="Clear simulation diagnostics">Clear</button>
+                </div>
+                {simulationDiagnostics.slice(0, 5).map((diag) => (
+                  <div key={diag.id} style={{marginBottom:6}}>
+                    <strong>{diag.title}</strong> — {diag.details}
+                  </div>
+                ))}
+              </div>
+            )}
             <Scene
               mapMode={mapMode}
               cameraView={cameraView}
@@ -588,6 +613,9 @@ export default function ParkOverview() {
               showDeviceLabels={showDeviceLabels}
               showStudyPosts={showStudyPosts}
               showLidarRanges={showLidarRanges}
+              showLidarCoverage={showLidarCoverage}
+              selectedLidarId={selectedLidarId}
+              onSelectLidar={setSelectedLidarId}
               selectedPlannedLidar={selectedPlannedLidar}
               onSelectPlannedLidar={setSelectedPlannedLidar}
               selectedPoleId={selectedPoleId}

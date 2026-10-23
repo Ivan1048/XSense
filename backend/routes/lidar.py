@@ -14,6 +14,8 @@ except ImportError:
 router = APIRouter()
 
 
+from typing import Optional
+
 class LidarEvalPayload(BaseModel):
     scenario_kind: str = "silent_fall"  # standing_stop | bench_sit | silent_fall | occluded_fall
     device_id: str = "LID-002"
@@ -21,6 +23,7 @@ class LidarEvalPayload(BaseModel):
     pole_id: str = "AS-104"
     sensor_offline: bool = False
     route_blocked: bool = False
+    person_position: Optional[list[float]] = None
 
 
 class FusionEvalPayload(BaseModel):
@@ -42,6 +45,7 @@ def run_lidar_evaluation(payload: LidarEvalPayload):
         pole_id=payload.pole_id,
         sensor_offline=payload.sensor_offline,
         route_blocked=payload.route_blocked,
+        person_position=payload.person_position,
     )
     return {"ok": True, "evaluation": evaluation}
 
