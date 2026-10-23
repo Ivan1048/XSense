@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { POLES } from '../data/parkData';
 import { usePark } from '../context/ParkContext';
 import StatusLabel from '../components/StatusLabel';
 
@@ -13,8 +15,14 @@ export default function Incidents() {
     resolveIncident,
     markFalseAlarm,
     guards,
+    setSelectedPoleId,
+    setOverviewSelection,
+    setCameraView,
+    setSelectedSectorId,
+    setPerspPose,
   } = usePark();
 
+  const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState<'All' | 'Needs Review' | 'Urgent' | 'In Progress' | 'Closed'>('All');
   const [selectedGuardToAssign, setSelectedGuardToAssign] = useState<string>('G01');
   const [resolveNote, setResolveNote] = useState<string>('');
@@ -43,6 +51,8 @@ export default function Incidents() {
 
   const filteredIncidents = incidents.filter((inc) => {
     if (activeFilter === 'All') return true;
+    const closed = inc.status === 'resolved' || inc.status === 'false_alarm';
+    if (activeFilter !== 'Closed' && closed) return false;
     if (activeFilter === 'Needs Review') {
       return inc.priority === 'needs_review' || inc.status === 'open';
     }
@@ -59,7 +69,27 @@ export default function Incidents() {
   });
 
   const selectedIncident =
-    incidents.find((i) => i.id === selectedIncidentId) || filteredIncidents[0] || null;
+    filteredIncidents.find((i) => i.id === selectedIncidentId) || filteredIncidents[0] || null;
+  const selectedId = selectedIncident?.id ?? null;
+  useEffect(() => {
+    setSelectedIncidentId(selectedId);
+    setResolveNote('');
+    setFalseAlarmNote('');
+    setShowResolveForm(false);
+    setShowFalseAlarmForm(false);
+  }, [selectedId, setSelectedIncidentId]);
+
+  const mapPole = POLES.find((pole) => pole.id === selectedIncident?.poleId);
+  const locateOnMap = () => {
+    if (!selectedIncident || !mapPole) return;
+    const [x, z] = mapPole.position;
+    setSelectedPoleId(mapPole.id);
+    setOverviewSelection({ type: 'pole', poleId: mapPole.id });
+    setCameraView('3d');
+    setSelectedSectorId(null);
+    setPerspPose({ position: [x + 18, 28, z + 25], target: [x, 0, z] });
+    navigate('/', { state: { locatedIncidentId: selectedIncident.id } });
+  };
   const assignedIds =
     selectedIncident?.assignedGuardIds ??
     (selectedIncident?.assignedGuardId ? [selectedIncident.assignedGuardId] : []);
@@ -238,6 +268,8 @@ export default function Incidents() {
                       <div>
                         <div className="detail-item-label">Location Area</div>
                         <div className="detail-item-value">{selectedIncident.zoneName}</div>
+                        <button className="btn btn-secondary" onClick={locateOnMap} disabled={!mapPole}>Locate on map</button>
+                        <div className="detail-item-label">{mapPole ? 'Approximate location based on recorded sensor / pole.' : 'Map location unavailable for this case.'}</div>
                       </div>
                       <div>
                         <div className="detail-item-label">Sensor / Pole</div>

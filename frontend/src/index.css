@@ -1703,3 +1703,67 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .badge-dismiss-btn:hover {
   color: #f1f5f9;
 }
+
+/* System Stage 1: clear health, provenance, and independent device inventory. */
+.system-page .system-bento-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.system-page .system-bento-top > .system-section:last-child { grid-column: 1 / -1; }
+.system-explanation, .system-device-details, .system-demo-controls p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+.system-explanation { margin-bottom: 16px; }
+.system-device-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.system-device-details { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; overflow-wrap: anywhere; }
+.system-status-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-size: var(--text-sm); }
+.system-active-cases { color: var(--lighting); font-weight: 600; }
+.system-demo-controls { border: 1px solid var(--border-subtle); border-radius: var(--r); padding: 8px 16px; max-width: 100%; }
+.system-demo-controls summary { cursor: pointer; font-size: var(--text-base); font-weight: 600; min-height: 44px; align-content: center; }
+.system-demo-controls summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.system-demo-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+@media (max-width: 768px) {
+  .system-page .system-bento-top, .system-device-grid { grid-template-columns: minmax(0, 1fr); }
+  .system-status-stack { align-items: flex-start; }
+}
+
+/* System Stage 2: temporary, source-labeled detection evidence. */
+.detection-inspector { margin-bottom: 18px; }
+.detection-inspector h3 { font-size: var(--text-base); margin-bottom: 12px; }
+.evidence-tools, .evidence-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.evidence-tools > div { padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--r); background: var(--bg-elevated); }
+.evidence-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+.evidence-controls label, .evidence-result-select { display: flex; flex-direction: column; gap: 8px; font-size: var(--text-sm); min-width: 0; }
+.evidence-controls select, .evidence-result-select select { min-height: 48px; max-width: 100%; font: inherit; }
+.evidence-controls label { flex: 1 1 200px; }
+.evidence-result-select { margin: 24px 0; }
+.evidence-result-select select { width: 100%; text-overflow: ellipsis; }
+.evidence-result { padding-top: 8px; }
+.evidence-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.evidence-metrics dt { color: var(--text-muted); font-size: var(--text-sm); }
+.evidence-metrics dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.evidence-checks { margin: 16px 0; padding: 16px; border: 1px solid var(--border-subtle); border-radius: var(--r); }
+.evidence-chart { margin: 16px 0; min-width: 0; }
+.evidence-chart figcaption { font-weight: 600; }
+.evidence-chart svg { display: block; width: 100%; margin-top: 8px; border-radius: var(--r); background: var(--bg-elevated); }
+.evidence-chart text { fill: var(--text-secondary); font-size: 16px; }
+.evidence-gridline { stroke: var(--border-subtle); }
+.evidence-eventline { stroke: var(--lighting); stroke-dasharray: 4 5; }
+.audio-score-list { list-style: none; margin: 16px 0; padding: 0; max-width: 900px; }
+.audio-score-list li { margin-bottom: 16px; }
+.audio-score-list li > div:first-child { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.audio-score-track { height: 12px; background: var(--bg-hover); border-radius: 6px; overflow: hidden; }
+.audio-score-track span { display: block; height: 100%; background: var(--accent); }
+.evidence-diagnostics summary, .evidence-sample-data summary { min-height: 44px; cursor: pointer; align-content: center; font-size: var(--text-base); }
+.evidence-table-scroll { max-height: 320px; overflow: auto; }
+.evidence-table-scroll table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.evidence-table-scroll th, .evidence-table-scroll td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border-subtle); }
+.capture-status { position: relative; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-surface); border-bottom: 1px solid var(--accent); font-size: var(--text-sm); flex-shrink: 0; }
+@media (max-width: 900px) {
+  .evidence-tools, .evidence-chart-grid, .evidence-metrics { grid-template-columns: minmax(0, 1fr); }
+}
+
+.detection-inspector select { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--r); padding: 10px 12px; }
+.detection-inspector select:focus-visible, .detection-inspector summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.evidence-chart { overflow-x: auto; }
+.evidence-chart svg { min-width: 560px; }
+.evidence-chart text { font-size: 20px; }

@@ -1,3 +1,4 @@
+import { rememberAudio, rememberLidar, clearDetectionEvidence } from '../utils/detectionEvidence';
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type {
   AlertEvent,
@@ -23,7 +24,7 @@ import {
   evaluateLidarScenario,
   evaluateSensorFusion,
 } from '../services/api';
-import { stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
+import { linkDemoFallIncident, stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 
 interface ParkContextType {
@@ -168,7 +169,7 @@ function loadSessionState(): {
 }
 
 export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { resetAllPersonas } = usePersonaStateMachine(true);
+  const { resetAllPersonas, states: personaStates, recoverPersona } = usePersonaStateMachine(true);
   const [selectedPoleId, setSelectedPoleId] = useState<string>('AS-103');
   const [lighting, setLighting] = useState<LightingMap>(initialLighting);
   const [lightingNote, setLightingNote] = useState<string>('');
@@ -192,6 +193,22 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => loadSessionState().incidents ?? [],
   );
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+
+  // A confirmed resolution ends the linked simulated visitor scenario.
+  // This only recovers the demo actor; it never advances a saved case status.
+  useEffect(() => {
+    for (const persona of personaStates) {
+      const linkedIds = [persona.fallIncidentId, persona.helpIncidentId].filter(
+        (id): id is string => Boolean(id),
+      );
+      if (linkedIds.length === 0) continue;
+      const linkedCases = linkedIds.map((id) => incidents.find((incident) => incident.id === id));
+      if (linkedCases.every((incident) => incident &&
+        (incident.status === 'resolved' || incident.status === 'false_alarm'))) {
+        recoverPersona(persona.personaIndex);
+      }
+    }
+  }, [incidents, personaStates, recoverPersona]);
 
   // Persisted Map View & Inspection State across Route Navigations
   const [mapMode, setMapMode] = useState<'blueprint' | 'assets'>('blueprint');
@@ -234,6 +251,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [latestAudioInference, setLatestAudioInference] = useState<AudioInferenceResult | null>(null);
   const [latestLidarEval, setLatestLidarEval] = useState<LidarEvaluationResult | null>(null);
+
+  // Temporary inspector summaries are independent of incident lifecycle and persistence.
+  useEffect(() => rememberAudio(latestAudioInference), [latestAudioInference]);
+  useEffect(() => rememberLidar(latestLidarEval), [latestLidarEval]);
 
   const clearLatestResults = useCallback(() => {
     setLatestAudioInference(null);
@@ -571,12 +592,18 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => subscribePersonaObservations(reportPersonaObservation), [reportPersonaObservation]);
 
   const resetView = useCallback(() => {
+    resetAllPersonas();
+    setFallPoleId(null);
+    setSosPoleId(null);
+    setIsLookalikeStop(false);
+    setAcousticPoleId(null);
+    setLightingNote('');
     setCameraView('3d');
     setSelectedSectorId(null);
     setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
     setRadarPose(OVERVIEW_RADAR_POSE);
     setResetCounter((c) => c + 1);
-  }, []);
+  }, [resetAllPersonas]);
 
   const setPoleLight = useCallback(
     (id: string, value: number) => {
@@ -788,6 +815,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     upsertSensorIncident(newIncident);
+    linkDemoFallIncident(0, newIncident.id);
 
     addEvent(
       'Unusual Movement — West Loop · AS-104',
@@ -959,6 +987,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     upsertSensorIncident(newIncident);
+    linkDemoFallIncident(0, newIncident.id);
 
     addEvent(
       '🚨 Signals Agree — West Loop · AS-104',
@@ -1334,6 +1363,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 9. Reset All Scenarios
   const handleReset = useCallback(() => {
+    clearDetectionEvidence();
     resetAllPersonas();
     try {
       sessionStorage.removeItem(STORAGE_KEY);
