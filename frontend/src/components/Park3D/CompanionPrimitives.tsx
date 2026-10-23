@@ -2,6 +2,9 @@ import { useMemo, useRef, useLayoutEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { PersonaActionType } from '../../types/persona';
+import { POLES } from '../../data/parkData';
+
+const POLE_POSITIONS: Array<[number, number]> = POLES.map((p) => [p.position[0], p.position[1]]);
 
 // ── Shared Materials for Companions ─────────────────────────────────────────
 const companionMaterial = new THREE.MeshStandardMaterial({
@@ -19,27 +22,137 @@ const leashMaterial = new THREE.LineBasicMaterial({
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
-/**
- * calculateCompanionTarget
- * Calculates the world target position of a companion based on the parent's
- * world position, heading angle (yaw in radians), and local offset [x, y, z].
- */
+export interface CompanionFollowConfig {
+  companionType: 'child' | 'dog';
+  localOffset: [number, number, number]; // e.g. child: [0.55, 0, -0.15], dog: [0.65, 0, 0.45]
+  maxPermissibleErrorM: number;         // child: 0.25m, dog: 0.50m
+  snapDiscontinuityThresholdM: number;  // e.g. 2.0m (remount / teleport / instant relocation)
+  followLambda: number;                 // frame-rate independent exponential decay speed (child: 18, dog: 10)
+}
+
+export const COMPANION_CONFIGS: Record<'child' | 'dog', CompanionFollowConfig> = {
+  child: {
+    companionType: 'child',
+    localOffset: [0.55, 0, -0.15],
+    maxPermissibleErrorM: 0.25,
+    snapDiscontinuityThresholdM: 2.0,
+    followLambda: 18.0,
+  },
+  dog: {
+    companionType: 'dog',
+    localOffset: [0.65, 0, 0.45],
+    maxPermissibleErrorM: 0.50,
+    snapDiscontinuityThresholdM: 2.2,
+    followLambda: 10.0,
+  },
+};
+
+export type CompanionTargetVector = THREE.Vector3 & [number, number, number];
+
 export function calculateCompanionTarget(
-  parentPosition: THREE.Vector3 | [number, number, number],
-  parentYaw: number,
+  parentWorldPos: [number, number, number] | THREE.Vector3,
+  parentYawRad: number,
   localOffset: [number, number, number],
-): THREE.Vector3 {
-  const basePos = Array.isArray(parentPosition)
-    ? new THREE.Vector3(parentPosition[0], parentPosition[1], parentPosition[2])
-    : parentPosition.clone();
+  polePositions?: Array<[number, number]>
+): CompanionTargetVector {
+  const pPos: [number, number, number] = Array.isArray(parentWorldPos)
+    ? parentWorldPos
+    : [parentWorldPos.x, parentWorldPos.y, parentWorldPos.z];
 
-  const rotatedOffset = new THREE.Vector3(
-    localOffset[0],
-    localOffset[1],
-    localOffset[2],
-  ).applyAxisAngle(WORLD_UP, parentYaw);
+  const cosY = Math.cos(parentYawRad);
+  const sinY = Math.sin(parentYawRad);
+  const [lx, ly, lz] = localOffset;
 
-  return basePos.add(rotatedOffset);
+  // Rotate local offset by parent's current heading
+  let tx = pPos[0] + (lx * cosY + lz * sinY);
+  const ty = pPos[1] + ly;
+  let tz = pPos[2] + (-lx * sinY + lz * cosY);
+
+  // Respect pole shaft collision avoidance (min 0.65m clearance from pole center)
+  const poles = polePositions || POLE_POSITIONS;
+  if (poles && poles.length > 0) {
+    for (const [px, pz] of poles) {
+      const dx = tx - px;
+      const dz = tz - pz;
+      const dist = Math.hypot(dx, dz);
+      const minClearance = 0.65;
+      if (dist < minClearance) {
+        const nx = dist > 1e-4 ? dx / dist : 1;
+        const nz = dist > 1e-4 ? dz / dist : 0;
+        tx = px + nx * minClearance;
+        tz = pz + nz * minClearance;
+      }
+    }
+  }
+
+  const vec = new THREE.Vector3(tx, ty, tz);
+  Object.defineProperties(vec, {
+    0: { get() { return this.x; }, set(val: number) { this.x = val; }, enumerable: true },
+    1: { get() { return this.y; }, set(val: number) { this.y = val; }, enumerable: true },
+    2: { get() { return this.z; }, set(val: number) { this.z = val; }, enumerable: true },
+  });
+
+  return vec as unknown as CompanionTargetVector;
+}
+
+export function stepCompanionTransform(
+  currentCompanionPos: [number, number, number] | THREE.Vector3 | null,
+  parentWorldPos: [number, number, number] | THREE.Vector3,
+  parentYawRad: number,
+  config: CompanionFollowConfig,
+  deltaSec: number,
+  forceImmediateSnap: boolean = false,
+  polePositions?: Array<[number, number]>
+): { position: [number, number, number]; yaw: number; didSnap: boolean } {
+  const desired = calculateCompanionTarget(
+    parentWorldPos,
+    parentYawRad,
+    config.localOffset,
+    polePositions
+  );
+
+  const curPos: [number, number, number] | null = currentCompanionPos
+    ? Array.isArray(currentCompanionPos)
+      ? currentCompanionPos
+      : [currentCompanionPos.x, currentCompanionPos.y, currentCompanionPos.z]
+    : null;
+
+  // 1. Scene remount, uninitialized state, or explicit relocation -> snap immediately
+  if (!curPos || forceImmediateSnap) {
+    return { position: [desired[0], desired[1], desired[2]], yaw: parentYawRad, didSnap: true };
+  }
+
+  const dx = desired[0] - curPos[0];
+  const dz = desired[2] - curPos[2];
+  const errorDist = Math.hypot(dx, dz);
+
+  // 2. Discontinuity / large separation -> snap immediately beside parent (never chase across park)
+  if (errorDist >= config.snapDiscontinuityThresholdM) {
+    return { position: [desired[0], desired[1], desired[2]], yaw: parentYawRad, didSnap: true };
+  }
+
+  // 3. Frame-rate independent exponential smoothing: alpha = 1 - exp(-lambda * dt)
+  const clampedDt = Math.min(Math.max(deltaSec, 0.001), 0.1);
+  const alpha = 1 - Math.exp(-config.followLambda * clampedDt);
+
+  let nextX = curPos[0] + dx * alpha;
+  let nextZ = curPos[2] + dz * alpha;
+
+  // 4. Hard bounded separation enforcement: never exceed maxPermissibleErrorM from desired target
+  const remDx = nextX - desired[0];
+  const remDz = nextZ - desired[2];
+  const remDist = Math.hypot(remDx, remDz);
+  if (remDist > config.maxPermissibleErrorM && remDist > 1e-5) {
+    const scale = config.maxPermissibleErrorM / remDist;
+    nextX = desired[0] + remDx * scale;
+    nextZ = desired[2] + remDz * scale;
+  }
+
+  return {
+    position: [nextX, desired[1], nextZ],
+    yaw: parentYawRad,
+    didSnap: false,
+  };
 }
 
 /**
@@ -104,41 +217,28 @@ export function ChildCompanion({
 
     if (!parentPos) return;
 
-    // Follow parent with natural lateral offset [0.55m to the right, slightly behind]
-    const target = calculateCompanionTarget(parentPos, parentRotY, [0.55, 0, 0.15]);
-    const targetY = isCollapsed ? 0.15 : parentPos.y * 0.55;
-    target.y = targetY;
+    const currentPos: [number, number, number] = [
+      groupRef.current.position.x,
+      groupRef.current.position.y,
+      groupRef.current.position.z,
+    ];
 
-    if (!initializedRef.current) {
-      groupRef.current.position.copy(target);
-      groupRef.current.rotation.y = parentRotY;
-      initializedRef.current = true;
-    } else {
-      groupRef.current.position.x = THREE.MathUtils.damp(
-        groupRef.current.position.x,
-        target.x,
-        10.0,
-        delta,
-      );
-      groupRef.current.position.z = THREE.MathUtils.damp(
-        groupRef.current.position.z,
-        target.z,
-        10.0,
-        delta,
-      );
-      groupRef.current.position.y = THREE.MathUtils.damp(
-        groupRef.current.position.y,
-        target.y,
-        6.0,
-        delta,
-      );
-      groupRef.current.rotation.y = THREE.MathUtils.damp(
-        groupRef.current.rotation.y,
-        parentRotY,
-        10.0,
-        delta,
-      );
-    }
+    const step = stepCompanionTransform(
+      initializedRef.current ? currentPos : null,
+      parentPos,
+      parentRotY,
+      COMPANION_CONFIGS.child,
+      delta,
+      !initializedRef.current,
+      POLE_POSITIONS
+    );
+
+    groupRef.current.position.x = step.position[0];
+    const targetY = isCollapsed ? 0.15 : parentPos.y * 0.55;
+    groupRef.current.position.y = THREE.MathUtils.damp(groupRef.current.position.y, targetY, 6.0, delta);
+    groupRef.current.position.z = step.position[2];
+    groupRef.current.rotation.y = step.yaw;
+    initializedRef.current = true;
 
     if (paused) return;
 
@@ -320,35 +420,27 @@ export function CanineCompanion({
 
     if (!walkerPos) return;
 
-    // Canine position: 0.85m to the right, slightly ahead of the dog walker
-    const target = calculateCompanionTarget(walkerPos, walkerRotY, [0.85, 0, 0.40]);
-    target.y = 0.22; // Ground height
+    const currentPos: [number, number, number] = [
+      groupRef.current.position.x,
+      groupRef.current.position.y,
+      groupRef.current.position.z,
+    ];
 
-    if (!initializedRef.current) {
-      groupRef.current.position.copy(target);
-      groupRef.current.rotation.y = walkerRotY;
-      initializedRef.current = true;
-    } else {
-      groupRef.current.position.x = THREE.MathUtils.damp(
-        groupRef.current.position.x,
-        target.x,
-        8.0,
-        delta,
-      );
-      groupRef.current.position.z = THREE.MathUtils.damp(
-        groupRef.current.position.z,
-        target.z,
-        8.0,
-        delta,
-      );
-      groupRef.current.position.y = 0.22;
-      groupRef.current.rotation.y = THREE.MathUtils.damp(
-        groupRef.current.rotation.y,
-        walkerRotY,
-        8.0,
-        delta,
-      );
-    }
+    const step = stepCompanionTransform(
+      initializedRef.current ? currentPos : null,
+      walkerPos,
+      walkerRotY,
+      COMPANION_CONFIGS.dog,
+      delta,
+      !initializedRef.current,
+      POLE_POSITIONS
+    );
+
+    groupRef.current.position.x = step.position[0];
+    groupRef.current.position.y = 0.22;
+    groupRef.current.position.z = step.position[2];
+    groupRef.current.rotation.y = step.yaw;
+    initializedRef.current = true;
 
     // Update dynamic leash line between walker's hand and canine collar
     if (lineGeoRef.current && walkerGroup) {
