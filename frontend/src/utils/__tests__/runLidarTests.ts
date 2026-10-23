@@ -6,6 +6,7 @@ import {
   evaluateCollapseAgainstAllLidars,
   checkRayIntersectsObstacle,
   generateLidarCoveragePolygonPoints,
+  generateLidarCoverageTriangles,
   calculateBearingDeg,
   angularDistanceDeg,
 } from '../lidarGeometry.ts';
@@ -163,6 +164,29 @@ assert(polygonPoints.length > 30, `Generates ${polygonPoints.length} polygon bou
 // Offline sensor must produce 0 points (hidden)
 const offlinePolygon = generateLidarCoveragePolygonPoints(OPERATIONAL_LIDARS[1], PARK_OBSTACLES, true, 60);
 assert(offlinePolygon.length === 0, 'Offline sensor produces 0 mesh points (hidden)');
+
+// Regressions: volume intersections, unrounded FOV, and visible mesh holes.
+const box: ObstacleDefinition = { id: 'box', name: 'Low box', type: 'box', position: [0, -5], size: [2, 4], heightM: 2 };
+assert(checkRayIntersectsObstacle([0, 0], [0, -10], box).hit, 'Ray entering above box top is blocked when descending inside it');
+const cylinder: ObstacleDefinition = { id: 'cylinder', name: 'Cylinder', type: 'cylinder', position: [0, -5], radius: 2, heightM: 1.5 };
+assert(checkRayIntersectsObstacle([0, 0], [0, -10], cylinder).hit, 'Cylinder exit volume blocks even when center ray is above top');
+assert(checkRayIntersectsObstacle([0, 0], [0, -5], cylinder).hit, 'Target inside obstacle is blocked');
+const edgeSensor = { ...sensorA, fovDeg: 90 };
+const outsideAngle = 45.01 * Math.PI / 180;
+assert(!evaluateLidarCoverageForSensor([5 * Math.sin(outsideAngle), -5 * Math.cos(outsideAngle)], edgeSensor, [], false).detected, 'Unrounded bearing rejects point just outside FOV');
+assert(!evaluateCollapseAgainstAllLidars([0, 0, 0], null, null, [], []).detected, 'Empty sensor inventory fails closed without crashing');
+const wrapPoints = generateLidarCoveragePolygonPoints(OPERATIONAL_LIDARS[0], PARK_OBSTACLES, false);
+const offsets = wrapPoints.map(p => Math.round(((calculateBearingDeg(OPERATIONAL_LIDARS[0].position, p) - 195 + 360) % 360) * 1e8) / 1e8 % 360);
+assert(offsets.every((v, i) => i === 0 || v >= offsets[i - 1] - 1e-8), 'Coverage boundary angles stay ordered across north');
+const triangles = generateLidarCoverageTriangles(edgeSensor, [box], false);
+let meshMatches = true;
+for (let i = 0; i < triangles.length; i += 9) {
+  const x = (triangles[i] + triangles[i + 3] + triangles[i + 6]) / 3;
+  const z = (triangles[i + 2] + triangles[i + 5] + triangles[i + 8]) / 3;
+  if (!evaluateLidarCoverageForSensor([x, z], edgeSensor, [box], false).detected) meshMatches = false;
+}
+assert(triangles.length > 0 && meshMatches, 'Every sampled mesh triangle centroid passes detection geometry and excludes dead zone');
+assert(generateLidarCoverageTriangles(edgeSensor, [], true).length === 0, 'Offline sensor hides sampled coverage');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===\n`);
 if (failed > 0) {

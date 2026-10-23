@@ -227,9 +227,8 @@ function World({
           path={path}
           personaIndex={i}
           paused={paused}
-          highlight={fallPoleId === 'AS-104' && i === 0}
-          stationary={fallPoleId === 'AS-104' && i === 0}
-          isCollapsed={fallPoleId === 'AS-104' && i === 0}
+          highlight={false}
+          stationary={false}
           isLookalikeStop={isLookalikeStop && i === 0}
           isSOS={Boolean(sosPole) && i === 1}
           sosTargetPos={sosPole ? sosPole.position : null}
@@ -691,6 +690,7 @@ export default function Scene({
   selectedCameraId = null,
   onSelectCamera,
   lighting,
+  lightingNote,
   showAudioCoverage,
   showLidarCoverage = true,
   selectedLidarId = null,

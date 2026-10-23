@@ -50,7 +50,7 @@ export default function PersonaCommandHUD({
     toggleScheduler,
   } = usePersonaStateMachine();
 
-  const { reportPersonaObservation, offlinePoleId, blockedRouteZone } = usePark();
+  const { offlinePoleId, blockedRouteZone } = usePark();
 
   // Synchronize active tab if external selection changes
   const currentPersonaIndex = selectedIndex !== undefined && selectedIndex !== null ? selectedIndex : activeTab;
@@ -77,14 +77,8 @@ export default function PersonaCommandHUD({
       return;
     }
 
-    if (actionKey === 'collapse' || actionKey === 'call_help') {
-      const obsType = actionKey === 'collapse' ? 'fall' : 'audio_distress';
-      const obsResult = reportPersonaObservation({
-        type: obsType,
-        personaIndex: currentPersonaIndex,
-        worldPos: [currentPersona.worldPosition[0], currentPersona.worldPosition[2]],
-        action: actionKey,
-      });
+    if (res.observation) {
+      const obsResult = res.observation;
 
       setActionFeedback({
         detected: obsResult.detected,
