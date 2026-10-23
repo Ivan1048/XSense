@@ -48,6 +48,9 @@ export function validatePersonaPosition(
 // ── Extended Runtime State with Manual Override Flag ────────────────────────
 export interface ExtendedPersonaRuntimeState extends PersonaRuntimeState {
   isManualOverride?: boolean;
+  // Simulation display links only; these never change incident lifecycle state.
+  fallIncidentId?: string;
+  helpIncidentId?: string;
 }
 
 type PersonaStateListener = (states: ExtendedPersonaRuntimeState[]) => void;
@@ -172,6 +175,8 @@ export function stageDemoCollapse(personaIndex: number, position: [number, numbe
   const current = globalPersonaStates[personaIndex];
   if (!current) return;
   const validPos = validatePersonaPosition(personaIndex, position);
+  current.fallIncidentId = undefined;
+  current.helpIncidentId = undefined;
   globalPersonaStates[personaIndex] = {
     ...current,
     worldPosition: [...validPos],
@@ -184,6 +189,14 @@ export function stageDemoCollapse(personaIndex: number, position: [number, numbe
   notifyListeners();
 }
 
+// Link a scripted demo actor only to the incident that its scenario created.
+export function linkDemoFallIncident(personaIndex: number, incidentId: string) {
+  const current = globalPersonaStates[personaIndex];
+  if (!current || current.fsmState !== 'collapsed') return;
+  globalPersonaStates[personaIndex] = { ...current, fallIncidentId: incidentId };
+  notifyListeners();
+}
+
 export interface PersonaObservation {
   type: 'fall' | 'audio_distress';
   personaIndex: number;
@@ -193,8 +206,21 @@ export interface PersonaObservation {
 type ObservationResult = { detected: boolean; reason: string; incidentId?: string };
 let observationHandler: ((obs: PersonaObservation) => ObservationResult) | undefined;
 export function subscribePersonaObservations(handler: (obs: PersonaObservation) => ObservationResult) {
-  observationHandler = handler;
-  return () => { if (observationHandler === handler) observationHandler = undefined; };
+  // Keep main's dispatcher and motion state authoritative. Annotate its returned
+  // observation only so existing incident display/recovery links remain usable.
+  const annotatedHandler = (obs: PersonaObservation): ObservationResult => {
+    const result = handler(obs);
+    const current = globalPersonaStates[obs.personaIndex];
+    if (current) {
+      globalPersonaStates[obs.personaIndex] = {
+        ...current,
+        [obs.type === 'fall' ? 'fallIncidentId' : 'helpIncidentId']: result.incidentId,
+      };
+    }
+    return result;
+  };
+  observationHandler = annotatedHandler;
+  return () => { if (observationHandler === annotatedHandler) observationHandler = undefined; };
 }
 
 let isSchedulerActive = true;
@@ -301,6 +327,8 @@ export function recoverPersonaState(personaIndex: number) {
 
   globalPersonaStates[personaIndex] = {
     ...globalPersonaStates[personaIndex],
+    fallIncidentId: undefined,
+    helpIncidentId: undefined,
     fsmState: 'recovering',
     currentAction: def.supportedActions[0] || 'walk',
     stationaryDurationSec: 0,

@@ -1,11 +1,8 @@
 import { Html } from '@react-three/drei';
 import { POLES } from '../../data/parkData';
 
-// Existing demo microphone mounts only. Radius is illustrative, not calibrated.
-export const AUDIO_COVERAGE = [
-  { id: 'AUD-001', poleId: 'AS-101', radius: 12 },
-  { id: 'AUD-002', poleId: 'AS-104', radius: 12 },
-];
+import { AUDIO_COVERAGE } from '../../data/audioData';
+export { AUDIO_COVERAGE } from '../../data/audioData';
 
 export default function AudioCoverage({ showLabels }: { showLabels: boolean }) {
   return <group>

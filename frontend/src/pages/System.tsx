@@ -1,5 +1,8 @@
+import DetectionInspector from '../components/System/DetectionInspector';
 // System page — sensor/lighting status, hybrid device inventory, incident history, insights, and privacy boundaries.
-import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
+import { CCTV_CAMERAS } from '../data/cameraData';
+import { AUDIO_COVERAGE } from '../data/audioData';
+import { OPERATIONAL_LIDARS } from '../data/lidarData';
 import { LIDAR_PLAN_NOTE } from '../data/lidarPlan';
 import StatusLabel from '../components/StatusLabel';
 import { POLES } from '../data/parkData';
@@ -8,47 +11,43 @@ import { usePark } from '../context/ParkContext';
 const HYBRID_DEVICE_INVENTORY = [
   ...CCTV_CAMERAS.map(camera => ({
     id: camera.id,
-    kind: 'CCTV Camera · Inventory only',
+    kind: 'CCTV camera',
     zone: camera.zoneName,
+    mountPoleId: null,
     mount: 'Independent camera post',
-    coverageBasis: camera.coverageNote + ' No live feed; visibility unverified.',
+    position: camera.position,
+    coverageBasis: camera.coverageNote,
+    integration: 'Inventory only · No camera feed connected',
   })),
-  {
-    id: 'AUD-001',
-    kind: 'Audio Node (YAMNet)',
-    zone: 'North Entrance',
-    mount: 'Pole AS-101',
-    coverageBasis: 'Approximate acoustic radius (~12m)',
-  },
-  {
-    id: 'LID-001',
-    kind: '3D LiDAR Node',
-    zone: 'Central Path',
-    mount: 'Pole AS-103',
-    coverageBasis: 'Estimated 3D point-cluster envelope (Blocked by opaque obstacles)',
-  },
-  {
-    id: 'LID-002',
-    kind: '3D LiDAR Node',
-    zone: 'West Loop (High-Risk Gap)',
-    mount: 'Pole AS-104',
-    coverageBasis: 'Targeted unmonitored curve · Evaluates height drop & prolonged immobility',
-  },
-  {
-    id: 'AUD-002',
-    kind: 'Audio Node (YAMNet)',
-    zone: 'West Loop (High-Risk Gap)',
-    mount: 'Pole AS-104',
-    coverageBasis: 'Co-located with LID-002 for 15s spatio-temporal corroboration',
-  },
+  ...OPERATIONAL_LIDARS.map(sensor => ({
+    id: sensor.id,
+    kind: 'LiDAR sensor',
+    zone: sensor.zoneName,
+    mountPoleId: sensor.mountPoleId,
+    mount: `Pole ${sensor.mountPoleId}`,
+    position: sensor.position,
+    coverageBasis: `Estimated range ${sensor.nominalRangeM} m · Field of view ${sensor.fovDeg}° · Direction ${sensor.headingDeg}°. Opaque obstacles can block detection.`,
+    integration: 'Simulated device · No physical sensor connected',
+  })),
+  ...AUDIO_COVERAGE.map(sensor => {
+    const pole = POLES.find(item => item.id === sensor.poleId);
+    return {
+      id: sensor.id,
+      kind: 'Audio sensor',
+      zone: pole?.name ?? 'Not available',
+      mountPoleId: sensor.poleId,
+      mount: `Pole ${sensor.poleId}`,
+      position: pole?.position,
+      coverageBasis: `Illustrative radius ${sensor.radius} m · Acoustic reach is not calibrated.`,
+      integration: 'Simulated device · Recorded and microphone tests are separate inputs',
+    };
+  }),
 ];
 
 export default function System() {
   const {
     lighting,
     offlinePoleId,
-    fallPoleId,
-    acousticPoleId,
     blockedRouteZone,
     incidents,
     handleReset,
@@ -70,10 +69,13 @@ export default function System() {
         <div>
           <h1 style={{ marginBottom: '4px' }}>System Health &amp; Hybrid Coverage</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: 0 }}>
-            Live sensor heartbeats, virtual pathway lighting, independent CCTV/LiDAR/Audio inventory, and privacy boundaries.
+            Simulated device health, active cases, virtual lighting, and estimated monitoring coverage.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <details className="system-demo-controls">
+          <summary>Demo Controls</summary>
+          <p>Simulation only. Reset All clears the current demo session, including its cases.</p>
+          <div className="system-demo-actions">
           <button className="btn btn-secondary btn-sm" onClick={triggerSilentFall}>
             Simulate Fall (AS-104)
           </button>
@@ -86,41 +88,28 @@ export default function System() {
           <button className="btn btn-ghost btn-sm" onClick={handleReset}>
             ↺ Reset All
           </button>
-        </div>
+          </div>
+        </details>
       </div>
 
       <div className="notice notice-info" style={{marginBottom: 20}}>
         <strong>Proposed LiDAR expansion (simulation)</strong><br />{LIDAR_PLAN_NOTE}
       </div>
+      <DetectionInspector />
       {/* Full-Width 3-Column Top Bento Grid */}
       <div className="system-bento-top">
         {/* Card 1: Pole & Sensor Heartbeat Status */}
         <section className="system-section">
-          <h2>Pole &amp; Sensor Heartbeats</h2>
+          <h2>Infrastructure Status</h2>
+          <p className="system-explanation">Health reflects the demo pole status. Active cases are shown separately; no physical heartbeat stream is connected.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {POLES.map((pole) => {
               const isOffline = offlinePoleId === pole.id;
-              const hasAlert =
-                fallPoleId === pole.id ||
-                acousticPoleId === pole.id ||
-                incidents.some(
-                  (i) =>
-                    i.poleId === pole.id &&
-                    i.status !== 'resolved' &&
-                    i.status !== 'false_alarm',
-                );
-
-              const statusLevel = isOffline
-                ? 'offline'
-                : hasAlert
-                ? 'needs_attention'
-                : 'online';
-              const activeInc = incidents.find(
-                (i) =>
-                  i.poleId === pole.id &&
-                  i.status !== 'resolved' &&
-                  i.status !== 'false_alarm',
-              );
+              const activeCases = incidents.filter(
+                incident => incident.poleId === pole.id &&
+                  incident.status !== 'resolved' && incident.status !== 'false_alarm',
+              ).length;
+              const statusLevel = isOffline ? 'offline' : pole.sensorStatus;
 
               return (
                 <div key={pole.id} className="metric-row" style={{ alignItems: 'center' }}>
@@ -135,14 +124,17 @@ export default function System() {
                       {pole.id} · {pole.name}
                     </div>
                     <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      {hasAlert && activeInc
-                        ? `⚠ ${activeInc.displayType} (${activeInc.createdAt})`
-                        : isOffline
-                        ? '⚠ Missed 3 heartbeats — monitoring unavailable'
-                        : 'Heartbeat healthy (simulated)'}
+                      {isOffline ? 'Monitoring unavailable in simulation' : 'Configured status · Simulated'}
+                      <br />Last heartbeat: Not available
+
                     </div>
                   </div>
-                  <StatusLabel level={statusLevel} />
+                  <div className="system-status-stack">
+                    <span>Device health <StatusLabel level={statusLevel} /></span>
+                    <span className={activeCases > 0 ? 'system-active-cases' : ''}>
+                      {activeCases} active {activeCases === 1 ? 'case' : 'cases'}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -171,7 +163,7 @@ export default function System() {
                       {pole.name}
                     </div>
                     <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                      {pole.id} · {isOffline ? 'Lamp Offline' : `Virtual ${brightness}%`}
+                      {pole.id} · {isOffline ? 'Unavailable in demo' : `Virtual ${brightness}%`}
                     </div>
                   </div>
                   <span
@@ -184,7 +176,7 @@ export default function System() {
                       ? 'Low Lighting Warning'
                       : isBoosted
                       ? '💡 Emergency 100%'
-                      : 'Normal (70%)'}
+                      : `Normal (${brightness}%)`}
                   </span>
                 </div>
               );
@@ -231,10 +223,11 @@ export default function System() {
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: 0, marginBottom: '10px' }}>
             CCTV, LiDAR, and Audio devices carry independent IDs and coverage limits; poles are optional mounts.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="system-device-grid">
             {HYBRID_DEVICE_INVENTORY.map((dev) => {
-              const isOffline =
-                offlinePoleId === 'AS-103' && dev.id === 'LID-001';
+              const isOffline = dev.mountPoleId !== null && offlinePoleId === dev.mountPoleId;
+              const mount = POLES.find(pole => pole.id === dev.mountPoleId);
+              const health = isOffline ? 'offline' : mount?.sensorStatus ?? 'Not available';
               return (
                 <div
                   key={dev.id}
@@ -267,7 +260,14 @@ export default function System() {
                     </span>
                   </div>
                   <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Mount: {dev.mount} · {dev.coverageBasis}
+                    {dev.zone} · Mount: {dev.mount}
+                  </div>
+                  <div className="system-device-details">
+                    <span>{dev.integration}</span>
+                    <span>Device health: {dev.mountPoleId ? <><StatusLabel level={health} /> · Simulated</> : 'Not available · Inventory only'}</span>
+                    <span>Last seen: Not available</span>
+                    <span>Map position: {dev.position ? `x ${dev.position[0]}, z ${dev.position[1]} m · Simulated layout` : 'Not available'}</span>
+                    <span>{dev.coverageBasis}</span>
                   </div>
                 </div>
               );
@@ -421,11 +421,11 @@ export default function System() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
             <div>
               <strong style={{ color: 'var(--text-primary)' }}>1. Anonymous LiDAR &amp; Separate Guard Tracking:</strong>{' '}
-              LiDAR detections appear strictly as anonymous cyan 3D bounding clusters. Security guards appear via separate reported radio/GPS telemetry and are never identified through LiDAR.
+              LiDAR detections appear strictly as anonymous cyan 3D bounding clusters. Guard locations use a separate simulation and are never identified through LiDAR.
             </div>
             <div>
-              <strong style={{ color: 'var(--text-primary)' }}>2. Zero Raw Recording Retention:</strong>{' '}
-              Recorded audio benchmarks and live microphone tests are classified in-memory by YAMNet. No raw audio waveforms, camera streams, or continuous resident trajectories are stored.
+              <strong style={{ color: 'var(--text-primary)' }}>2. Input Sources &amp; Integration:</strong>{' '}
+              Audio tests use recorded clips or microphone input. This page does not provide camera feeds or a physical sensor connection; planned capabilities are not live integrations.
             </div>
             <div>
               <strong style={{ color: 'var(--text-primary)' }}>3. Honest Sensor Limitations:</strong>{' '}

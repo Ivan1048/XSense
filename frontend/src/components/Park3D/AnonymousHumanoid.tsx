@@ -1,3 +1,5 @@
+import { appendCaptureSample, captureIsDue, getEvidenceSnapshot } from '../../utils/detectionEvidence';
+import { evaluateCollapseAgainstAllLidars } from '../../utils/lidarGeometry';
 import { useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -9,6 +11,7 @@ import {
   updatePersonaPosition,
   validatePersonaPosition,
 } from '../../hooks/usePersonaStateMachine';
+import { usePark } from '../../context/ParkContext';
 import { ChildCompanion, CanineCompanion } from './CompanionPrimitives';
 
 // ── Shared Static Geometries ────────────────────────────────────────────────
@@ -104,7 +107,17 @@ export default function AnonymousHumanoid({
     : isCollapsed || effectiveAction === 'collapse';
   const isSignalingHelp = isSOS || effectiveAction === 'call_help';
 
-  const isEmergency = highlight || isProne || isSignalingHelp;
+  const { incidents, fallPoleId, acousticPoleId, offlinePoleId, blockedRouteZone } = usePark();
+  const caseIsActive = (id: string | undefined, fallbackActive: boolean) => {
+    const incident = id ? incidents.find((item) => item.id === id) : undefined;
+    return incident
+      ? incident.status !== 'resolved' && incident.status !== 'false_alarm'
+      : fallbackActive;
+  };
+  const showFallAlert = isProne && caseIsActive(runtimeState?.fallIncidentId, Boolean(fallPoleId));
+  const showHelpAlert = isSignalingHelp && (isSOS || caseIsActive(runtimeState?.helpIncidentId, Boolean(acousticPoleId)));
+  const lastCapturePosition = useRef<{ id: string; x: number; z: number; ms: number } | null>(null);
+  const isEmergency = highlight || showFallAlert || showHelpAlert;
   const showPostureBox = hovered || isLookalikeStop || isEmergency;
 
   // Root vertical height tracker (0.86m nominal waist height)
@@ -147,9 +160,9 @@ export default function AnonymousHumanoid({
   }, [curve, path.x, path.z, path.radius, path.offset, runtimeState]);
 
   // Color tokens
-  const color = isEmergency ? (isSignalingHelp ? '#ef4444' : '#ffb759') : '#5ee6da';
-  const emissive = isEmergency ? (isSignalingHelp ? '#dc2626' : '#ea580c') : '#0e7490';
-  const wireColor = isEmergency ? (isSignalingHelp ? '#ef4444' : '#f59e0b') : '#38bdf8';
+  const color = isEmergency ? (showHelpAlert ? '#ef4444' : '#ffb759') : '#5ee6da';
+  const emissive = isEmergency ? (showHelpAlert ? '#dc2626' : '#ea580c') : '#0e7490';
+  const wireColor = isEmergency ? (showHelpAlert ? '#ef4444' : '#f59e0b') : '#38bdf8';
 
   const humanoidMaterial = useMemo(
     () =>
@@ -297,6 +310,23 @@ export default function AnonymousHumanoid({
         gaitPhaseRef.current,
         0,
       );
+    }
+
+    const captureTime = performance.now();
+    if (captureIsDue(resolvedIndex, captureTime)) {
+      const captureId = getEvidenceSnapshot().capture!.id;
+      const previous = lastCapturePosition.current?.id === captureId ? lastCapturePosition.current : null;
+      const x = groupRef.current.position.x;
+      const z = groupRef.current.position.z;
+      const distance = previous ? Math.hypot(x - previous.x, z - previous.z) : 0;
+      const elapsed = previous ? (captureTime - previous.ms) / 1000 : 0;
+      // Scripted relocation and gaps are not meaningful walking-speed measurements.
+      const speedMps = previous && elapsed > 0 && elapsed < 1 && distance < 3 ? distance / elapsed : null;
+      lastCapturePosition.current = { id: captureId, x, z, ms: captureTime };
+      appendCaptureSample(resolvedIndex, captureTime, {
+        heightM: boxDim[1], speedMps, action: effectiveAction,
+        coverage: evaluateCollapseAgainstAllLidars([x, 0.34, z], offlinePoleId, blockedRouteZone).allSensorEvaluations,
+      });
     }
 
     // ── 4. Canonical Target Pose Calculation (Zero Overlapping Poses) ────────
@@ -652,7 +682,7 @@ export default function AnonymousHumanoid({
         )}
 
         {/* Resident SOS Ground Pulse Ring */}
-        {isSignalingHelp && (
+        {showHelpAlert && (
           <mesh ref={sosRingRef} position={[0, -0.78, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={SHARED_GEOMETRIES.sosRing}>
             <meshBasicMaterial color="#ef4444" transparent opacity={0.7} side={THREE.DoubleSide} />
           </mesh>
@@ -669,7 +699,7 @@ export default function AnonymousHumanoid({
                 fontWeight: 600,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                background: isSignalingHelp
+                background: showHelpAlert
                   ? 'rgba(185, 28, 28, 0.95)'
                   : isProne
                   ? 'rgba(180, 83, 9, 0.94)'
@@ -681,7 +711,7 @@ export default function AnonymousHumanoid({
                 boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
               }}
             >
-              {isSignalingHelp
+              {showHelpAlert
                 ? '🆘 Resident SOS · Help Requested Here'
                 : isProne
                 ? 'Simulated visitor · Collapsed pose (ground truth)'

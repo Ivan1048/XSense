@@ -1,3 +1,4 @@
+import { getEvidenceSnapshot } from '../../utils/detectionEvidence';
 import { useState, useMemo } from 'react';
 import type { PersonaActionType } from '../../types/persona';
 import { PERSONA_DEFINITIONS } from '../../data/personaData';
@@ -32,7 +33,7 @@ export default function PersonaCommandHUD({
   selectedIndex?: number | null;
   onSelectPersona?: (index: number) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<number>(selectedIndex ?? 0);
+  const [activeTab, setActiveTab] = useState<number>(() => selectedIndex ?? getEvidenceSnapshot().capture?.visitorIndex ?? 0);
   const [isCollapsedHUD, setIsCollapsedHUD] = useState<boolean>(false);
   const [actionFeedback, setActionFeedback] = useState<{
     detected: boolean;
