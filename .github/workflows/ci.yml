@@ -51,6 +51,12 @@ jobs:
           ./node_modules/.bin/esbuild src/utils/__tests__/runPersonaAudioTests.ts --bundle --platform=node --format=esm --outfile=/tmp/runPersonaAudioTests.mjs
           node /tmp/runPersonaAudioTests.mjs
 
+      - name: Residential Route Tests (13/13)
+        working-directory: frontend
+        run: |
+          ./node_modules/.bin/esbuild src/utils/__tests__/runResidentialRouteTests.ts --bundle --platform=node --format=esm --outfile=/tmp/runResidentialRouteTests.mjs
+          node /tmp/runResidentialRouteTests.mjs
+
       - name: Backend Unit Tests
         run: python -m unittest discover -s backend/tests -v
 
