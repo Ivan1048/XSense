@@ -46,6 +46,7 @@ interface SceneProps {
   selectedPoleId: string;
   onSelectPole: (id: string) => void;
   onSelectAnonymousDot?: (dotIndex: number) => void;
+  selectedDotIndex?: number | null;
   onSelectGuard?: (guardId: string) => void;
   selectedCameraId?: string | null;
   onSelectCamera?: (cameraId: string) => void;
@@ -116,6 +117,7 @@ function World({
   selectedPoleId,
   onSelectPole,
   onSelectAnonymousDot,
+  selectedDotIndex = null,
   onSelectGuard,
   selectedCameraId = null,
   onSelectCamera,
@@ -229,7 +231,7 @@ function World({
           path={path}
           personaIndex={i}
           paused={paused}
-          highlight={false}
+          highlight={selectedDotIndex === i}
           stationary={false}
           isLookalikeStop={isLookalikeStop && i === 0}
           isSOS={Boolean(sosPole) && i === 1}
@@ -674,6 +676,7 @@ export default function Scene({
   selectedPoleId,
   onSelectPole,
   onSelectAnonymousDot,
+  selectedDotIndex = null,
   onSelectGuard,
   selectedCameraId = null,
   onSelectCamera,
@@ -737,6 +740,7 @@ export default function Scene({
           selectedPoleId={selectedPoleId}
           onSelectPole={onSelectPole}
           onSelectAnonymousDot={onSelectAnonymousDot}
+          selectedDotIndex={selectedDotIndex}
           onSelectGuard={onSelectGuard}
           selectedCameraId={selectedCameraId}
           onSelectCamera={onSelectCamera}
@@ -758,7 +762,7 @@ export default function Scene({
           onFinishGuardReturn={onFinishGuardReturn}
         />
       </Canvas>
-      <PersonaCommandHUD onSelectPersona={onSelectAnonymousDot} />
+      <PersonaCommandHUD selectedIndex={selectedDotIndex} onSelectPersona={onSelectAnonymousDot} />
     </>
   );
 }
