@@ -10,6 +10,7 @@ import ParkSurroundings from './ParkSurroundings';
 import TacticalBlueprint from './TacticalBlueprint';
 import LidarPlan from './LidarPlan';
 import AudioCoverage from './AudioCoverage';
+import LidarCoverageOverlay from './LidarCoverageOverlay';
 import AnonymousHumanoid from './AnonymousHumanoid';
 import GuardMarker from './GuardMarker';
 import PersonaCommandHUD from '../HUD/PersonaCommandHUD';
@@ -36,6 +37,9 @@ interface SceneProps {
   showDeviceLabels: boolean;
   showStudyPosts?: boolean;
   showLidarRanges?: boolean;
+  showLidarCoverage?: boolean;
+  selectedLidarId?: string | null;
+  onSelectLidar?: (id: string) => void;
   showLidarPlan?: boolean;
   selectedPlannedLidar: string;
   onSelectPlannedLidar: (id: string) => void;
@@ -115,6 +119,9 @@ function World({
   onSelectCamera,
   lighting,
   showAudioCoverage,
+  showLidarCoverage = true,
+  selectedLidarId = null,
+  onSelectLidar,
   showCCTV = true,
   paused,
   nightMode,
@@ -163,6 +170,16 @@ function World({
           <ParkSurroundings nightMode={nightMode} />
         </>
       )}
+
+      {/* Authoritative Operational LiDAR Coverage Overlay (with FOV and shadow cutouts) */}
+      <LidarCoverageOverlay
+        showCoverage={showLidarCoverage}
+        showLabels={showDeviceLabels}
+        offlinePoleId={offlinePoleId}
+        blockedRouteZone={blockedRouteZone}
+        selectedSensorId={selectedLidarId}
+        onSelectSensor={onSelectLidar}
+      />
 
       {showAudioCoverage && <AudioCoverage showLabels={showDeviceLabels} />}
       <LidarPlan
@@ -673,8 +690,10 @@ export default function Scene({
   selectedCameraId = null,
   onSelectCamera,
   lighting,
-  lightingNote,
   showAudioCoverage,
+  showLidarCoverage = true,
+  selectedLidarId = null,
+  onSelectLidar,
   showCCTV = true,
   paused,
   nightMode,
@@ -712,6 +731,9 @@ export default function Scene({
           mapMode={mapMode}
           showStudyPosts={showStudyPosts}
           showLidarRanges={showLidarRanges}
+          showLidarCoverage={showLidarCoverage}
+          selectedLidarId={selectedLidarId}
+          onSelectLidar={onSelectLidar}
           showLidarPlan={showLidarPlan}
           selectedPlannedLidar={selectedPlannedLidar}
           onSelectPlannedLidar={onSelectPlannedLidar}

@@ -141,6 +141,7 @@ export const evaluateLidarScenario = (
   poleId = 'AS-104',
   sensorOffline = false,
   routeBlocked = false,
+  personPosition?: [number, number],
 ): Promise<LidarEvalApiResponse> =>
   request<LidarEvalApiResponse>('/lidar/evaluate', {
     method: 'POST',
@@ -151,6 +152,7 @@ export const evaluateLidarScenario = (
       pole_id: poleId,
       sensor_offline: sensorOffline,
       route_blocked: routeBlocked,
+      person_position: personPosition,
     }),
   });
 

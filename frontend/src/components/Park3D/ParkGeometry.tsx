@@ -678,7 +678,7 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
 
       {/* ── 9. Blocked Route Barrier Visual ────────────────────────────────── */}
       {blockedRouteZone === 'central_path' && (
-        <group position={[1.0, 0.38, 1.0]}>
+        <group position={[1.1, 0.38, -0.6]}>
           <mesh position={[0, 0.35, 0]}>
             <boxGeometry args={[2.8, 0.28, 0.2]} />
             <meshStandardMaterial color="#dc2626" />
