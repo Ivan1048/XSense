@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type {
   PersonaActionType,
   PersonaFsmState,
@@ -28,6 +28,31 @@ let globalPersonaStates: ExtendedPersonaRuntimeState[] = PERSONA_DEFINITIONS.map
   isManualOverride: false,
 }));
 
+// Demo controls stage ground truth explicitly; ParkContext evaluates that same
+// position before creating any detection response. This does not emit an observation.
+export function stageDemoCollapse(personaIndex: number, position: [number, number, number]) {
+  const current = globalPersonaStates[personaIndex];
+  if (!current) return;
+  globalPersonaStates[personaIndex] = {
+    ...current, worldPosition: [...position], currentAction: 'collapse',
+    fsmState: 'collapsed', stationaryDurationSec: 0, isManualOverride: true,
+  };
+  notifyListeners();
+}
+
+export interface PersonaObservation {
+  type: 'fall' | 'audio_distress';
+  personaIndex: number;
+  worldPos: [number, number];
+  action: string;
+}
+type ObservationResult = { detected: boolean; reason: string; incidentId?: string };
+let observationHandler: ((obs: PersonaObservation) => ObservationResult) | undefined;
+export function subscribePersonaObservations(handler: (obs: PersonaObservation) => ObservationResult) {
+  observationHandler = handler;
+  return () => { if (observationHandler === handler) observationHandler = undefined; };
+}
+
 let isSchedulerActive = true;
 
 function notifyListeners() {
@@ -35,13 +60,15 @@ function notifyListeners() {
   listeners.forEach((l) => l(snapshot));
 }
 
-export function usePersonaStateMachine() {
+// Timers belong to the shared persona store, so commands from any consumer
+// reset the same scheduler rather than an inactive consumer's private timers.
+const nextScheduledTimeRef = { current: [30, 42, 25, 38, 35] };
+const activeActionDurationRef = { current: [0, 0, 0, 0, 0] };
+
+export function usePersonaStateMachine(ownsScheduler = false) {
   const [states, setStates] = useState<ExtendedPersonaRuntimeState[]>(() => globalPersonaStates);
   const [schedulerEnabled, setSchedulerEnabled] = useState<boolean>(() => isSchedulerActive);
 
-  // Per-persona autonomous scheduler timers
-  const nextScheduledTimeRef = useRef<number[]>([30, 42, 25, 38, 35]);
-  const activeActionDurationRef = useRef<number[]>([0, 0, 0, 0, 0]);
 
   useEffect(() => {
     const handleUpdate: PersonaStateListener = (newStates) => {
@@ -72,7 +99,10 @@ export function usePersonaStateMachine() {
             isManualOverride: true,
           };
           notifyListeners();
-          return { success: true, reason: 'Signaling distress from collapsed position' };
+          return { success: true, reason: 'Signaling distress from collapsed position', observation: observationHandler?.({
+            type: 'audio_distress', personaIndex,
+            worldPos: [current.worldPosition[0], current.worldPosition[2]], action,
+          }) };
         }
         if (action === 'collapse') {
           // Already collapsed; maintain collapsed state
@@ -109,8 +139,16 @@ export function usePersonaStateMachine() {
         isManualOverride: !isAutonomous, // Manual action locks out autonomous scheduler
       };
 
+      const observation = action === 'collapse' || action === 'call_help'
+        ? observationHandler?.({
+            type: action === 'collapse' ? 'fall' : 'audio_distress',
+            personaIndex,
+            worldPos: [current.worldPosition[0], current.worldPosition[2]],
+            action,
+          })
+        : undefined;
       notifyListeners();
-      return { success: true, reason: `Action "${action}" activated` };
+      return { success: true, reason: `Action "${action}" activated`, observation };
     },
     [],
   );
@@ -172,6 +210,7 @@ export function usePersonaStateMachine() {
 
   // ── Autonomous Behavior Scheduler Loop (1 Hz Tick) ────────────────────────
   useEffect(() => {
+    if (!ownsScheduler) return;
     const interval = setInterval(() => {
       if (!isSchedulerActive) return;
 
@@ -226,7 +265,7 @@ export function usePersonaStateMachine() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [dispatchAction, recoverPersona]);
+  }, [dispatchAction, recoverPersona, ownsScheduler]);
 
   return {
     states,

@@ -37,16 +37,32 @@ OPERATIONAL_LIDARS = {
 
 # Authoritative Obstacles for Line-of-Sight Check
 PARK_OBSTACLES = [
-    {"id": "tree_rt_0", "name": "Rain Tree (North Entrance)", "type": "cylinder", "pos": (-16.0, -17.0), "r": 0.75, "h": 3.5},
-    {"id": "tree_rt_8", "name": "Rain Tree (Central West Spur A)", "type": "cylinder", "pos": (-12.0, -4.0), "r": 0.55, "h": 2.8},
-    {"id": "tree_rt_9", "name": "Rain Tree (Central West Spur B)", "type": "cylinder", "pos": (-15.0, -2.0), "r": 0.62, "h": 3.0},
-    {"id": "tree_rt_10", "name": "Rain Tree (Central West Spur C)", "type": "cylinder", "pos": (-11.0, -1.0), "r": 0.50, "h": 2.6},
-    {"id": "tree_rt_11", "name": "Rain Tree (West Loop Connector A)", "type": "cylinder", "pos": (-7.0, 8.0), "r": 0.48, "h": 2.5},
-    {"id": "tree_rt_12", "name": "Rain Tree (West Loop Connector B)", "type": "cylinder", "pos": (-5.0, 9.0), "r": 0.52, "h": 2.7},
-    {"id": "bridge_pier_west", "name": "Footbridge West Pier", "type": "cylinder", "pos": (2.3, -4.8), "r": 0.35, "h": 2.2},
-    {"id": "bridge_pier_east", "name": "Footbridge East Pier", "type": "cylinder", "pos": (4.9, -4.8), "r": 0.35, "h": 2.2},
-    {"id": "gateway_building", "name": "North Entrance Guard Building", "type": "box", "pos": (-17.1, -17.0), "size": (2.4, 2.4), "h": 3.0},
-    {"id": "dynamic_route_barrier", "name": "Central Path Closed Barrier", "type": "box", "pos": (1.1, -0.6), "size": (3.0, 0.35), "h": 0.9, "dynamic": True},
+    {'id': 'tree_rt_0', 'name': 'Rain Tree (North Entrance)', 'type': 'cylinder', 'pos': (-16, -17), 'h': 3.5, 'r': 0.75},
+    {'id': 'tree_rt_1', 'name': 'Rain Tree (West Perimeter A)', 'type': 'cylinder', 'pos': (-20, -6), 'h': 3.2, 'r': 0.65},
+    {'id': 'tree_rt_2', 'name': 'Rain Tree (West Loop Garden)', 'type': 'cylinder', 'pos': (-17, 14), 'h': 3.4, 'r': 0.72},
+    {'id': 'tree_rt_3', 'name': 'Rain Tree (East Gate Lawn)', 'type': 'cylinder', 'pos': (17, 15), 'h': 3.6, 'r': 0.78},
+    {'id': 'tree_rt_4', 'name': 'Rain Tree (East Perimeter)', 'type': 'cylinder', 'pos': (20, -5), 'h': 3.3, 'r': 0.68},
+    {'id': 'tree_rt_5', 'name': 'Rain Tree (North-East Lawn)', 'type': 'cylinder', 'pos': (16, -15), 'h': 3.4, 'r': 0.72},
+    {'id': 'tree_rt_6', 'name': 'Rain Tree (South Loop A)', 'type': 'cylinder', 'pos': (-8, 19), 'h': 3.3, 'r': 0.68},
+    {'id': 'tree_rt_7', 'name': 'Rain Tree (South Loop B)', 'type': 'cylinder', 'pos': (8, 19), 'h': 3.5, 'r': 0.75},
+    {'id': 'tree_rt_8', 'name': 'Rain Tree (Central West Spur A)', 'type': 'cylinder', 'pos': (-12, -4), 'h': 2.8, 'r': 0.55},
+    {'id': 'tree_rt_9', 'name': 'Rain Tree (Central West Spur B)', 'type': 'cylinder', 'pos': (-15, -2), 'h': 3, 'r': 0.62},
+    {'id': 'tree_rt_10', 'name': 'Rain Tree (Central West Spur C)', 'type': 'cylinder', 'pos': (-11, -1), 'h': 2.6, 'r': 0.5},
+    {'id': 'tree_rt_11', 'name': 'Rain Tree (West Loop Connector A)', 'type': 'cylinder', 'pos': (-7, 8), 'h': 2.5, 'r': 0.48},
+    {'id': 'tree_rt_12', 'name': 'Rain Tree (West Loop Connector B)', 'type': 'cylinder', 'pos': (-5, 9), 'h': 2.7, 'r': 0.52},
+    {'id': 'tree_rt_13', 'name': 'Rain Tree (East Lake Bank A)', 'type': 'cylinder', 'pos': (15, -6), 'h': 2.8, 'r': 0.55},
+    {'id': 'tree_rt_14', 'name': 'Rain Tree (East Lake Bank B)', 'type': 'cylinder', 'pos': (17, -3), 'h': 3, 'r': 0.6},
+    {'id': 'tree_pt_0', 'name': 'Palm Tree (North Lawn A)', 'type': 'cylinder', 'pos': (-12, -17), 'h': 4.2, 'r': 0.38},
+    {'id': 'tree_pt_1', 'name': 'Palm Tree (North Lawn B)', 'type': 'cylinder', 'pos': (-6, -16), 'h': 4, 'r': 0.35},
+    {'id': 'tree_pt_2', 'name': 'Palm Tree (North-East Perimeter)', 'type': 'cylinder', 'pos': (13, -16), 'h': 4.4, 'r': 0.42},
+    {'id': 'tree_pt_3', 'name': 'Palm Tree (East Lake Lawn)', 'type': 'cylinder', 'pos': (16, -9), 'h': 4, 'r': 0.35},
+    {'id': 'tree_pt_4', 'name': 'Palm Tree (South-West Lawn)', 'type': 'cylinder', 'pos': (-10, 17), 'h': 4.2, 'r': 0.38},
+    {'id': 'tree_pt_5', 'name': 'Palm Tree (East Promenade)', 'type': 'cylinder', 'pos': (18, 10), 'h': 4.3, 'r': 0.4},
+    {'id': 'tree_pt_6', 'name': 'Palm Tree (West Garden)', 'type': 'cylinder', 'pos': (-15, 4), 'h': 3.8, 'r': 0.32},
+    {'id': 'bridge_pier_west', 'name': 'Footbridge West Pier', 'type': 'cylinder', 'pos': (2.3, -4.8), 'h': 2.2, 'r': 0.35},
+    {'id': 'bridge_pier_east', 'name': 'Footbridge East Pier', 'type': 'cylinder', 'pos': (4.9, -4.8), 'h': 2.2, 'r': 0.35},
+    {'id': 'gateway_building', 'name': 'North Entrance Guard Building', 'type': 'box', 'pos': (-17.1, -17), 'h': 3, 'size': [2.4, 2.4]},
+    {'id': 'dynamic_route_barrier', 'name': 'Central Path Closed Barrier', 'type': 'box', 'pos': (1.1, -0.6), 'h': 0.9, 'size': [3, 0.35], 'dynamic': True},
 ]
 
 
@@ -65,7 +81,7 @@ def _calculate_bearing(from_pt: tuple[float, float], to_pt: tuple[float, float])
     dz = to_pt[1] - from_pt[1]
     rad = math.atan2(dx, -dz)
     deg = math.degrees(rad)
-    return round(_normalize_angle(deg), 1)
+    return _normalize_angle(deg)
 
 
 def _check_ray_obstacle(
@@ -81,77 +97,38 @@ def _check_ray_obstacle(
     if ray_len < 0.001:
         return False, ""
 
-    dir_x = dx / ray_len
-    dir_z = dz / ray_len
-
+    entry, exit = 0.0, 1.0
     if obs["type"] == "cylinder":
-        ox, oz = obs["pos"]
-        r = obs["r"]
-        h = obs["h"]
-
-        to_c_x = ox - ray_start[0]
-        to_c_z = oz - ray_start[1]
-        t_proj = to_c_x * dir_x + to_c_z * dir_z
-        t_clamped = max(0.0, min(ray_len, t_proj))
-
-        closest_x = ray_start[0] + t_clamped * dir_x
-        closest_z = ray_start[1] + t_clamped * dir_z
-        dist_c = math.hypot(ox - closest_x, oz - closest_z)
-
-        if dist_c <= r:
-            frac = t_clamped / ray_len
-            hit_h = start_h + frac * (end_h - start_h)
-            if 0.0 <= hit_h <= h:
-                half_chord = math.sqrt(max(0.0, r * r - dist_c * dist_c))
-                entry_t = t_proj - half_chord
-                if 0.4 < entry_t < ray_len - 0.1:
-                    return True, obs["name"]
-
-    elif obs["type"] == "box":
-        ox, oz = obs["pos"]
-        bw, bd = obs["size"]
-        h = obs["h"]
-
-        lx_s = ray_start[0] - ox
-        lz_s = ray_start[1] - oz
-        lx_e = ray_end[0] - ox
-        lz_e = ray_end[1] - oz
-
-        min_x, max_x = -bw / 2.0, bw / 2.0
-        min_z, max_z = -bd / 2.0, bd / 2.0
-
-        dl_x = lx_e - lx_s
-        dl_z = lz_e - lz_s
-
-        p = [-dl_x, dl_x, -dl_z, dl_z]
-        q = [lx_s - min_x, max_x - lx_s, lz_s - min_z, max_z - lz_s]
-
-        t0, t1 = 0.0, 1.0
-        intersects = True
-        for i in range(4):
-            if abs(p[i]) < 1e-6:
-                if q[i] < 0:
-                    intersects = False
-                    break
+        ox, oz = ray_start[0] - obs["pos"][0], ray_start[1] - obs["pos"][1]
+        proj = -(ox * dx + oz * dz) / (ray_len * ray_len)
+        discriminant = proj * proj - (ox * ox + oz * oz - obs["r"] ** 2) / (ray_len * ray_len)
+        if discriminant < 0:
+            return False, ""
+        entry = max(entry, proj - math.sqrt(discriminant))
+        exit = min(exit, proj + math.sqrt(discriminant))
+    else:
+        c, sn = math.cos(obs.get("rotation", 0)), math.sin(obs.get("rotation", 0))
+        ox, oz = ray_start[0] - obs["pos"][0], ray_start[1] - obs["pos"][1]
+        starts = [c * ox - sn * oz, sn * ox + c * oz]
+        deltas = [c * dx - sn * dz, sn * dx + c * dz]
+        for axis in range(2):
+            half = obs["size"][axis] / 2
+            if abs(deltas[axis]) < 1e-9:
+                if abs(starts[axis]) > half:
+                    return False, ""
             else:
-                t = q[i] / p[i]
-                if p[i] < 0:
-                    if t > t1:
-                        intersects = False
-                        break
-                    t0 = max(t0, t)
-                else:
-                    if t < t0:
-                        intersects = False
-                        break
-                    t1 = min(t1, t)
-
-        if intersects and t0 <= t1:
-            hit_dist = t0 * ray_len
-            if 0.4 < hit_dist < ray_len - 0.1:
-                hit_h = start_h + t0 * (end_h - start_h)
-                if 0.0 <= hit_h <= h:
-                    return True, obs["name"]
+                ta = (-half - starts[axis]) / deltas[axis]
+                tb = (half - starts[axis]) / deltas[axis]
+                entry, exit = max(entry, min(ta, tb)), min(exit, max(ta, tb))
+    dh = end_h - start_h
+    if abs(dh) < 1e-9:
+        if start_h < 0 or start_h > obs["h"]:
+            return False, ""
+    else:
+        ta, tb = -start_h / dh, (obs["h"] - start_h) / dh
+        entry, exit = max(entry, min(ta, tb)), min(exit, max(ta, tb))
+    if entry <= exit and exit >= 0 and entry <= 1:
+        return True, obs["name"]
 
     return False, ""
 
@@ -166,7 +143,12 @@ def evaluate_lidar_scenario(
     person_position: Optional[list[float]] = None,
 ) -> dict[str, Any]:
     """Evaluate a 3D bounding-box kinematic sequence from a simulated LiDAR node with geometric gating."""
-    sensor_cfg = OPERATIONAL_LIDARS.get(device_id, OPERATIONAL_LIDARS["LID-002"])
+    sensor_cfg = OPERATIONAL_LIDARS.get(device_id)
+    unknown_sensor = sensor_cfg is None
+    sensor_cfg = sensor_cfg or OPERATIONAL_LIDARS["LID-002"]
+    invalid_position = person_position is not None and (
+        len(person_position) not in (2, 3) or not all(math.isfinite(v) for v in person_position)
+    )
 
     # Geometric Gating if position is provided
     is_occluded = False
@@ -175,17 +157,17 @@ def evaluate_lidar_scenario(
     is_out_of_fov = False
     dist_m = 0.0
 
-    if person_position and len(person_position) >= 2:
+    if person_position and not invalid_position:
         px = person_position[0]
         pz = person_position[1] if len(person_position) == 2 else person_position[2]
         sx, sz = sensor_cfg["position"]
 
         dist_m = math.hypot(px - sx, pz - sz)
-        if dist_m > sensor_cfg["nominal_range_m"] or dist_m < sensor_cfg["min_range_m"]:
+        if dist_m > sensor_cfg["nominal_range_m"] + 1e-9 or dist_m < sensor_cfg["min_range_m"] - 1e-9:
             is_out_of_range = True
 
         bearing = _calculate_bearing((sx, sz), (px, pz))
-        if _angular_distance(bearing, sensor_cfg["heading_deg"]) > (sensor_cfg["fov_deg"] / 2.0):
+        if _angular_distance(bearing, sensor_cfg["heading_deg"]) > (sensor_cfg["fov_deg"] / 2.0) + 1e-9:
             is_out_of_fov = True
 
         if not is_out_of_range and not is_out_of_fov:
@@ -199,9 +181,13 @@ def evaluate_lidar_scenario(
                     break
 
     # Sensor failure or coverage gap checks
-    if sensor_offline or scenario_kind == "occluded_fall" or is_occluded or is_out_of_range or is_out_of_fov:
+    if unknown_sensor or invalid_position or sensor_offline or scenario_kind == "occluded_fall" or is_occluded or is_out_of_range or is_out_of_fov:
         failure_reason = "LiDAR sensor is offline or unmonitored."
-        if sensor_offline:
+        if unknown_sensor:
+            failure_reason = f"Unknown LiDAR sensor {device_id}."
+        elif invalid_position:
+            failure_reason = "Invalid person position; coverage cannot be verified."
+        elif sensor_offline:
             failure_reason = f"Sensor {device_id} on pole {pole_id} is offline (missed heartbeats)."
         elif is_occluded:
             failure_reason = f"Line of sight from {device_id} blocked by {occluding_obj}."
