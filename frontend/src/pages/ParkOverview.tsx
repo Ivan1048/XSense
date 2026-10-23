@@ -826,9 +826,13 @@ export default function ParkOverview() {
           aria-label="Park details panel"
           style={{
             overflowY: 'auto',
+            overflowX: 'hidden',
             maxHeight: 'calc(100vh - 130px)',
             minHeight: 0,
-            paddingRight: '4px',
+            padding: '12px',
+            paddingTop: '12px',
+            boxSizing: 'border-box',
+            borderLeft: '1px solid rgba(148, 163, 184, 0.18)',
           }}
         >
           {/* Active Incidents / Safety Lighting Notice in Sidebar */}

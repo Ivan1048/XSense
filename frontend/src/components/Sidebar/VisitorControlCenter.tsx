@@ -78,15 +78,47 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
   const isCollapsed = selected.state === 'collapsed';
 
   return (
-    <div className="visitor-control-center" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div
+      className="visitor-control-center"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
+        width: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+      }}
+    >
       {/* SECTION A — Selected Visitor */}
-      <div className="sidebar-card" style={{ padding: '12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+      <div
+        className="sidebar-card"
+        style={{
+          padding: '12px',
+          borderRadius: '8px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          border: '1px solid rgba(56, 189, 248, 0.2)',
+          width: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
         <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase' }}>
           Section A · Selected Visitor
         </div>
 
         {/* Single Authoritative #1-#5 Selector */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginBottom: '12px' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+            gap: '4px',
+            marginBottom: '12px',
+            width: '100%',
+            boxSizing: 'border-box',
+          }}
+        >
           {personas.map((p) => {
             const isSelected = p.id === selected.id;
             const isFallen = p.state === 'collapsed';
@@ -95,8 +127,12 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
                 key={p.id}
                 type="button"
                 onClick={() => onSelectPersona(p.id)}
+                title={`#${p.number} ${p.name}`}
                 style={{
-                  padding: '6px 4px',
+                  minWidth: 0,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '6px 2px',
                   borderRadius: '6px',
                   border: isSelected
                     ? '1.5px solid #38bdf8'
@@ -112,10 +148,21 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
                   cursor: 'pointer',
                   textAlign: 'center',
                   fontSize: '11px',
+                  overflow: 'hidden',
                 }}
               >
-                <div style={{ fontWeight: 700 }}>#{p.number}</div>
-                <div style={{ fontSize: '10px', color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontWeight: 700, lineHeight: 1.2 }}>#{p.number}</div>
+                <div
+                  style={{
+                    fontSize: '9.5px',
+                    color: '#cbd5e1',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    width: '100%',
+                    display: 'block',
+                  }}
+                >
                   {p.roleLabel}
                 </div>
               </button>
@@ -156,7 +203,19 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
       </div>
 
       {/* SECTION B — Live Sensor Evaluation */}
-      <div className="sidebar-card" style={{ padding: '12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(148, 163, 184, 0.2)' }}>
+      <div
+        className="sidebar-card"
+        style={{
+          padding: '12px',
+          borderRadius: '8px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          width: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
         <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase' }}>
           Section B · Live Sensor Evaluation
         </div>
@@ -185,7 +244,9 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
           <div>
             <span style={{ color: '#94a3b8', display: 'block', fontSize: '11px' }}>Coverage Eligibility</span>
             <span style={{ color: liveEval.isCovered ? '#34d399' : '#f87171', fontWeight: 600 }}>
-              {liveEval.isCovered ? 'ELIGIBLE (COVERED)' : `GAP (${liveEval.reason || 'Out of bounds'})`}
+              {liveEval.isCovered
+                ? 'ELIGIBLE (COVERED)'
+                : `GAP (${(liveEval.reason || 'Out of bounds').replace(/(\d+\.\d{1})\d+/g, '$1')})`}
             </span>
           </div>
         </div>
@@ -198,7 +259,7 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
           {latestObservation ? (
             <div style={{ color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <div>
-                <strong>Verdict:</strong> {latestObservation.verdict}
+                <strong>Verdict:</strong> {latestObservation.verdict.replace(/(\d+\.\d{1})\d+/g, '$1')}
               </div>
               <div>
                 <strong>Observed Sensor / Distance:</strong>{' '}
@@ -218,7 +279,19 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
       </div>
 
       {/* SECTION C — Persona Actions */}
-      <div className="sidebar-card" style={{ padding: '12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(148, 163, 184, 0.2)' }}>
+      <div
+        className="sidebar-card"
+        style={{
+          padding: '12px',
+          borderRadius: '8px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          width: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
         <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase' }}>
           Section C · Persona Actions (Visitor #{selected.number})
         </div>
@@ -286,7 +359,22 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
       </div>
 
       {/* SECTION D — Background Visitor Activity */}
-      <div className="sidebar-card" style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(148, 163, 184, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div
+        className="sidebar-card"
+        style={{
+          padding: '10px 12px',
+          borderRadius: '8px',
+          background: 'rgba(15, 23, 42, 0.75)',
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
         <div>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>
             Background Visitor Activity
@@ -314,7 +402,19 @@ export const VisitorControlCenter: React.FC<VisitorControlCenterProps> = ({
       </div>
 
       {/* SECTION E — Simulator Ground Truth (Collapsible) */}
-      <div className="sidebar-card" style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.55)', border: '1px dashed rgba(148, 163, 184, 0.25)' }}>
+      <div
+        className="sidebar-card"
+        style={{
+          padding: '10px 12px',
+          borderRadius: '8px',
+          background: 'rgba(15, 23, 42, 0.55)',
+          border: '1px dashed rgba(148, 163, 184, 0.25)',
+          width: '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
         <button
           type="button"
           onClick={() => setGroundTruthOpen((prev) => !prev)}
