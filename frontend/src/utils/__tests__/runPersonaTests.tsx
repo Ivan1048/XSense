@@ -60,6 +60,14 @@ await act(async () => { await park.triggerSilentFall(); });
 assert.equal(park.incidents.length, 1, 'Demo fallback creates a geometrically valid fall');
 assert.deepEqual(persona.states[0].worldPosition, [-11, .34, 9.5], 'Demo pose matches evaluated world position');
 assert.equal(persona.states[0].fsmState, 'collapsed');
+// Recovery changes the persona pose without falsely resolving the open incident.
+act(() => { persona.recoverPersona(0); });
+assert.equal(persona.states[0].fsmState, 'recovering');
+assert.notEqual(persona.states[0].currentAction, 'collapse');
+assert.equal(park.incidents.length, 1, 'Recovery does not close a guard-review case');
+await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+assert.equal(persona.states[0].fsmState, 'autonomous_moving');
+assert.notEqual(persona.states[0].currentAction, 'collapse');
 act(() => root.unmount());
 assert.equal(callbacks.size, 0);
 console.log('PASS: manual/autonomous valid and missed collapses, repeat dedup, offline diagnostics, demo fallback, scheduler ownership/cleanup');
