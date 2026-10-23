@@ -571,12 +571,14 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => subscribePersonaObservations(reportPersonaObservation), [reportPersonaObservation]);
 
   const resetView = useCallback(() => {
-    setCameraView('3d');
     setSelectedSectorId(null);
-    setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
-    setRadarPose(OVERVIEW_RADAR_POSE);
+    if (cameraView === 'radar') {
+      setRadarPose(OVERVIEW_RADAR_POSE);
+    } else {
+      setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
+    }
     setResetCounter((c) => c + 1);
-  }, []);
+  }, [cameraView]);
 
   const setPoleLight = useCallback(
     (id: string, value: number) => {

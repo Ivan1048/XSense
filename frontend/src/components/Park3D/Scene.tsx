@@ -66,10 +66,12 @@ interface SceneProps {
   onFinishGuardReturn?: (guardId: string) => void;
   resetCounter: number;
   cameraPose?: CameraPose;
+  perspPose?: CameraPose;
+  radarPose?: CameraPose;
   onCameraChange?: (pose: CameraPose) => void;
 }
 
-interface WorldProps extends Omit<SceneProps, 'resetCounter' | 'cameraPose' | 'onCameraChange' | 'cameraView' | 'selectedSectorId' | 'sectorFlyTrigger'> {}
+interface WorldProps extends Omit<SceneProps, 'resetCounter' | 'cameraPose' | 'perspPose' | 'radarPose' | 'onCameraChange' | 'cameraView' | 'selectedSectorId' | 'sectorFlyTrigger'> {}
 
 // Preserve horizontal framing across Perspective and Orthographic cameras when viewer aspect ratio changes
 function ResponsiveFraming({
@@ -258,6 +260,8 @@ interface CameraRigProps {
   selectedSectorId: SectorId | null;
   sectorFlyTrigger?: number;
   cameraPose: CameraPose;
+  perspPose?: CameraPose;
+  radarPose?: CameraPose;
   onCameraChange?: (pose: CameraPose) => void;
   resetCounter: number;
 }
@@ -267,12 +271,21 @@ function CameraRig({
   selectedSectorId,
   sectorFlyTrigger = 0,
   cameraPose,
+  perspPose,
+  radarPose,
   onCameraChange,
   resetCounter,
 }: CameraRigProps) {
   const { size, set, gl } = useThree();
   const controlsRef = useRef<any>(null);
-  const latestPoseRef = useRef<CameraPose>(cameraPose);
+
+  // Derive initial active pose based on cameraView
+  const initialActivePose = cameraView === 'radar'
+    ? (radarPose || cameraPose || OVERVIEW_RADAR_POSE)
+    : (perspPose || cameraPose || OVERVIEW_PERSPECTIVE_POSE);
+
+  const latestPoseRef = useRef<CameraPose>(initialActivePose);
+  const lastCommittedPoseRef = useRef<CameraPose>(initialActivePose);
   const lastHandledResetRef = useRef(resetCounter);
   const lastSectorRef = useRef<SectorId | null>(selectedSectorId);
   const lastViewRef = useRef<CameraViewMode>(cameraView);
@@ -280,20 +293,26 @@ function CameraRig({
   const isMountedRef = useRef<boolean>(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Perspective camera (world ground plane X/Z, elevation Y, target in front)
   const perspCamera = useMemo(() => {
     const aspect = size.width / Math.max(1, size.height);
+    const pose = perspPose || (cameraView === '3d' ? cameraPose : OVERVIEW_PERSPECTIVE_POSE);
     const cam = new THREE.PerspectiveCamera(44, aspect, 0.5, 500);
-    cam.position.set(cameraPose.position[0], cameraPose.position[1], cameraPose.position[2]);
+    cam.position.set(pose.position[0], pose.position[1], pose.position[2]);
     cam.up.set(0, 1, 0);
+    cam.lookAt(pose.target[0], pose.target[1], pose.target[2]);
+    cam.updateProjectionMatrix();
     return cam;
   }, []);
 
+  // Orthographic radar camera (world ground plane X/Z, elevation Y=100, looking -Y, north-up = screen top is -Z)
   const orthoCamera = useMemo(() => {
     const aspect = size.width / Math.max(1, size.height);
     const bounds = selectedSectorId && SECTOR_BOUNDS[selectedSectorId]
       ? SECTOR_BOUNDS[selectedSectorId]
       : PARK_BOUNDS;
     const frustum = calculateOrthographicFrustum(bounds, aspect, 1.12);
+    const pose = radarPose || (cameraView === 'radar' ? cameraPose : OVERVIEW_RADAR_POSE);
     const cam = new THREE.OrthographicCamera(
       frustum.left,
       frustum.right,
@@ -302,85 +321,59 @@ function CameraRig({
       0.1,
       500
     );
-    // Conventions: World ground plane X/Z, Elevation Y, Looking direction -Y, North-up (screen top = world -Z)
     cam.up.set(0, 0, -1);
-    const cx = cameraPose.target ? cameraPose.target[0] : frustum.target[0];
-    const cz = cameraPose.target ? cameraPose.target[2] : frustum.target[2];
+    const cx = pose.target ? pose.target[0] : frustum.target[0];
+    const cz = pose.target ? pose.target[2] : frustum.target[2];
     cam.position.set(cx, 100, cz);
     cam.lookAt(cx, 0, cz);
-    cam.zoom = cameraPose.zoom ?? 1.0;
+    cam.zoom = pose.zoom ?? OVERVIEW_RADAR_ZOOM;
     cam.updateProjectionMatrix();
     return cam;
   }, []);
 
   const activeCamera = cameraView === 'radar' ? orthoCamera : perspCamera;
 
-  // Sync active camera with R3F store and OrbitControls
+  // Sync active camera with R3F store
   useEffect(() => {
     set({ camera: activeCamera });
-    const controls = controlsRef.current;
+  }, [activeCamera, set]);
+
+  // Commit pose callback with threshold to avoid redundant context updates
+  const commitPose = useCallback((pose: CameraPose) => {
+    const last = lastCommittedPoseRef.current;
+    const posDiff = Math.hypot(
+      pose.position[0] - last.position[0],
+      pose.position[1] - last.position[1],
+      pose.position[2] - last.position[2]
+    );
+    const tgtDiff = Math.hypot(
+      pose.target[0] - last.target[0],
+      pose.target[1] - last.target[1],
+      pose.target[2] - last.target[2]
+    );
+    const zoomDiff = Math.abs((pose.zoom ?? 1) - (last.zoom ?? 1));
+
+    if (posDiff > 0.05 || tgtDiff > 0.05 || zoomDiff > 0.02) {
+      lastCommittedPoseRef.current = pose;
+      onCameraChange?.(pose);
+    }
+  }, [onCameraChange]);
+
+  const commitPoseRef = useRef(commitPose);
+  useEffect(() => {
+    commitPoseRef.current = commitPose;
+  }, [commitPose]);
+
+  // Set controls ref and apply initial target and active camera
+  const handleControlsRef = useCallback((controls: any) => {
+    controlsRef.current = controls;
     if (controls) {
       controls.object = activeCamera;
-      if (cameraView === 'radar') {
-        controls.enableRotate = false;
-        controls.enablePan = true;
-        controls.enableZoom = true;
-        controls.dampingFactor = 0.06;
-        controls.zoomSpeed = 0.4;
-        controls.minDistance = 0;
-        controls.maxDistance = Infinity;
-        controls.minPolarAngle = 0;
-        // IMPORTANT: NEVER clamp maxPolarAngle to 0 in radar mode. With up=(0,0,-1), phi is 90 deg. Clamping to 0 flips camera onto the horizon.
-        controls.maxPolarAngle = Math.PI;
-        controls.mouseButtons = {
-          LEFT: THREE.MOUSE.PAN,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.PAN,
-        };
-        controls.minZoom = 0.4;
-        controls.maxZoom = 4.5;
-      } else {
-        controls.enableRotate = true;
-        controls.enablePan = true;
-        controls.enableZoom = true;
-        controls.dampingFactor = 0.08;
-        controls.zoomSpeed = 0.45;
-        controls.minDistance = 8;
-        controls.maxDistance = 180;
-        controls.minPolarAngle = 0;
-        controls.maxPolarAngle = Math.PI / 2.15;
-        controls.mouseButtons = {
-          LEFT: THREE.MOUSE.ROTATE,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.PAN,
-        };
-      }
+      const pose = latestPoseRef.current;
+      controls.target.set(pose.target[0], pose.target[1], pose.target[2]);
       controls.update();
     }
-  }, [cameraView, activeCamera, set]);
-
-  // Restore camera position and OrbitControls target on initial mount
-  useEffect(() => {
-    const controls = controlsRef.current;
-    if (controls) {
-      if (cameraView === 'radar') {
-        const cx = cameraPose.target[0];
-        const cz = cameraPose.target[2];
-        orthoCamera.position.set(cx, 100, cz);
-        orthoCamera.up.set(0, 0, -1);
-        controls.target.set(cx, 0, cz);
-        orthoCamera.lookAt(cx, 0, cz);
-        orthoCamera.zoom = cameraPose.zoom ?? 1.0;
-        orthoCamera.updateProjectionMatrix();
-      } else {
-        perspCamera.position.set(cameraPose.position[0], cameraPose.position[1], cameraPose.position[2]);
-        perspCamera.up.set(0, 1, 0);
-        controls.target.set(cameraPose.target[0], cameraPose.target[1], cameraPose.target[2]);
-      }
-      controls.update();
-    }
-    isMountedRef.current = true;
-  }, []);
+  }, [activeCamera]);
 
   // Fly-to animation state
   const animRef = useRef<{
@@ -432,19 +425,50 @@ function CameraRig({
     };
   }, [activeCamera, cameraView]);
 
-  // Cancel fly-to animation immediately on user interaction
-  useEffect(() => {
+  // User input handlers hooked directly into OrbitControls
+  const handleControlsChange = useCallback(() => {
+    if (animRef.current.isAnimating) return;
     const controls = controlsRef.current;
     if (!controls) return;
 
-    const handleInteractionStart = () => {
-      if (animRef.current.isAnimating) {
-        animRef.current.isAnimating = false;
-      }
+    if (cameraView === 'radar') {
+      activeCamera.position.y = 100;
+      activeCamera.up.set(0, 0, -1);
+      controls.target.y = 0;
+    }
+
+    const pos = activeCamera.position;
+    const tgt = controls.target;
+    const zoom = cameraView === 'radar' ? (activeCamera as THREE.OrthographicCamera).zoom : undefined;
+
+    const currentPose: CameraPose = {
+      position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
+      target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
+      zoom: zoom !== undefined ? Number(zoom.toFixed(2)) : undefined,
     };
+    latestPoseRef.current = currentPose;
 
-    controls.addEventListener('start', handleInteractionStart);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      commitPose(latestPoseRef.current);
+    }, 250);
+  }, [activeCamera, cameraView, commitPose]);
 
+  const handleControlsStart = useCallback(() => {
+    if (animRef.current.isAnimating) {
+      animRef.current.isAnimating = false;
+    }
+  }, []);
+
+  const handleControlsEnd = useCallback(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (!animRef.current.isAnimating) {
+      commitPose(latestPoseRef.current);
+    }
+  }, [commitPose]);
+
+  // Cancel fly-to animation on mouse wheel
+  useEffect(() => {
     const dom = gl.domElement;
     const onWheel = () => {
       if (animRef.current.isAnimating) {
@@ -452,16 +476,58 @@ function CameraRig({
       }
     };
     dom.addEventListener('wheel', onWheel, { passive: true });
-
-    return () => {
-      controls.removeEventListener('start', handleInteractionStart);
-      dom.removeEventListener('wheel', onWheel);
-    };
+    return () => dom.removeEventListener('wheel', onWheel);
   }, [gl.domElement]);
 
-  // React to sector changes or manual sector fly triggers
+  // Save latest camera pose when CameraRig unmounts (e.g. route navigation)
   useEffect(() => {
-    if (!isMountedRef.current) return;
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      commitPoseRef.current(latestPoseRef.current);
+    };
+  }, []);
+
+  // Projection mode change (3D <-> Radar)
+  useEffect(() => {
+    if (cameraView === lastViewRef.current) return;
+    lastViewRef.current = cameraView;
+
+    const targetPose = cameraView === 'radar'
+      ? (radarPose || OVERVIEW_RADAR_POSE)
+      : (perspPose || OVERVIEW_PERSPECTIVE_POSE);
+
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.object = activeCamera;
+      if (cameraView === 'radar') {
+        controls.enableRotate = false;
+        controls.maxPolarAngle = Math.PI;
+        controls.minPolarAngle = 0;
+        orthoCamera.position.set(targetPose.target[0], 100, targetPose.target[2]);
+        orthoCamera.up.set(0, 0, -1);
+        controls.target.set(targetPose.target[0], 0, targetPose.target[2]);
+        orthoCamera.lookAt(targetPose.target[0], 0, targetPose.target[2]);
+        orthoCamera.zoom = targetPose.zoom ?? OVERVIEW_RADAR_ZOOM;
+        orthoCamera.updateProjectionMatrix();
+      } else {
+        controls.enableRotate = true;
+        controls.maxPolarAngle = Math.PI / 2.15;
+        controls.minPolarAngle = 0;
+        perspCamera.position.set(targetPose.position[0], targetPose.position[1], targetPose.position[2]);
+        perspCamera.up.set(0, 1, 0);
+        controls.target.set(targetPose.target[0], targetPose.target[1], targetPose.target[2]);
+      }
+      controls.update();
+      latestPoseRef.current = targetPose;
+    }
+  }, [cameraView, activeCamera, perspPose, radarPose]);
+
+  // React to explicit sector selection changes or sectorFlyTrigger
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
     const isTriggered = sectorFlyTrigger !== lastTriggerRef.current;
     lastTriggerRef.current = sectorFlyTrigger;
 
@@ -475,7 +541,7 @@ function CameraRig({
       } else {
         flyTo(sec.perspectivePosition, sec.target);
       }
-    } else if (!selectedSectorId && (lastSectorRef.current !== null || isTriggered)) {
+    } else if (!selectedSectorId && isTriggered) {
       if (cameraView === 'radar') {
         flyTo(OVERVIEW_RADAR_POSE.position, OVERVIEW_RADAR_POSE.target, OVERVIEW_RADAR_ZOOM);
       } else {
@@ -484,118 +550,18 @@ function CameraRig({
     }
   }, [selectedSectorId, cameraView, sectorFlyTrigger, flyTo]);
 
-  // React to projection mode changes (3D <-> Radar)
+  // React to Reset View button clicks
   useEffect(() => {
-    if (!isMountedRef.current) return;
-    if (cameraView === lastViewRef.current) return;
-    lastViewRef.current = cameraView;
-
-    if (selectedSectorId && SECTORS[selectedSectorId]) {
-      const sec = SECTORS[selectedSectorId];
-      if (cameraView === 'radar') {
-        flyTo(sec.radarPosition, sec.target, sec.radarZoom);
-      } else {
-        flyTo(sec.perspectivePosition, sec.target);
-      }
-    } else {
+    if (resetCounter !== lastHandledResetRef.current) {
+      lastHandledResetRef.current = resetCounter;
+      lastSectorRef.current = null;
       if (cameraView === 'radar') {
         flyTo(OVERVIEW_RADAR_POSE.position, OVERVIEW_RADAR_POSE.target, OVERVIEW_RADAR_ZOOM);
       } else {
         flyTo(OVERVIEW_PERSPECTIVE_POSE.position, OVERVIEW_PERSPECTIVE_POSE.target);
       }
     }
-  }, [cameraView, selectedSectorId, flyTo]);
-
-  // React to Reset View button clicks
-  useEffect(() => {
-    if (resetCounter !== lastHandledResetRef.current) {
-      lastHandledResetRef.current = resetCounter;
-      lastSectorRef.current = null;
-      lastViewRef.current = '3d';
-      flyTo(OVERVIEW_PERSPECTIVE_POSE.position, OVERVIEW_PERSPECTIVE_POSE.target);
-    }
-  }, [resetCounter, flyTo]);
-
-  const saveCurrentPose = useCallback(() => {
-    const controls = controlsRef.current;
-    if (!controls) return;
-
-    const pos = activeCamera.position;
-    const tgt = controls.target;
-    const zoom = cameraView === 'radar' ? (activeCamera as THREE.OrthographicCamera).zoom : undefined;
-
-    const newPose: CameraPose = {
-      position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
-      target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
-      zoom: zoom !== undefined ? Number(zoom.toFixed(2)) : undefined,
-    };
-    latestPoseRef.current = newPose;
-    onCameraChange?.(newPose);
-  }, [activeCamera, cameraView, onCameraChange]);
-
-  // Save latest pose on unmount
-  useEffect(() => {
-    return () => {
-      const controls = controlsRef.current;
-      if (controls) {
-        const pos = activeCamera.position;
-        const tgt = controls.target;
-        const zoom = cameraView === 'radar' ? (activeCamera as THREE.OrthographicCamera).zoom : undefined;
-        onCameraChange?.({
-          position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
-          target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
-          zoom: zoom !== undefined ? Number(zoom.toFixed(2)) : undefined,
-        });
-      }
-    };
-  }, [activeCamera, cameraView, onCameraChange]);
-
-  // Controls change and end listeners
-  useEffect(() => {
-    const controls = controlsRef.current;
-    if (!controls) return;
-
-    const handleChange = () => {
-      if (animRef.current.isAnimating) return;
-
-      if (cameraView === 'radar') {
-        activeCamera.position.y = 100;
-        activeCamera.up.set(0, 0, -1);
-        controls.target.y = 0;
-      }
-
-      const pos = activeCamera.position;
-      const tgt = controls.target;
-      const zoom = cameraView === 'radar' ? (activeCamera as THREE.OrthographicCamera).zoom : undefined;
-
-      latestPoseRef.current = {
-        position: [Number(pos.x.toFixed(2)), Number(pos.y.toFixed(2)), Number(pos.z.toFixed(2))],
-        target: [Number(tgt.x.toFixed(2)), Number(tgt.y.toFixed(2)), Number(tgt.z.toFixed(2))],
-        zoom: zoom !== undefined ? Number(zoom.toFixed(2)) : undefined,
-      };
-
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = setTimeout(() => {
-        onCameraChange?.(latestPoseRef.current);
-      }, 300);
-    };
-
-    const handleEnd = () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      if (!animRef.current.isAnimating) {
-        saveCurrentPose();
-      }
-    };
-
-    controls.addEventListener('change', handleChange);
-    controls.addEventListener('end', handleEnd);
-
-    return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      controls.removeEventListener('change', handleChange);
-      controls.removeEventListener('end', handleEnd);
-    };
-  }, [activeCamera, cameraView, onCameraChange, saveCurrentPose]);
+  }, [resetCounter, cameraView, flyTo]);
 
   // Render loop animation update
   useFrame(() => {
@@ -626,7 +592,24 @@ function CameraRig({
         controls.target.copy(anim.targetTarget);
       }
       controls.update();
-      saveCurrentPose();
+
+      const finalPose: CameraPose = {
+        position: [
+          Number(activeCamera.position.x.toFixed(2)),
+          Number(activeCamera.position.y.toFixed(2)),
+          Number(activeCamera.position.z.toFixed(2)),
+        ],
+        target: [
+          Number(controls.target.x.toFixed(2)),
+          Number(controls.target.y.toFixed(2)),
+          Number(controls.target.z.toFixed(2)),
+        ],
+        zoom: cameraView === 'radar'
+          ? Number((activeCamera as THREE.OrthographicCamera).zoom.toFixed(2))
+          : undefined,
+      };
+      latestPoseRef.current = finalPose;
+      commitPose(finalPose);
     } else {
       const t = elapsed < 0.5
         ? 4 * elapsed * elapsed * elapsed
@@ -657,7 +640,9 @@ function CameraRig({
 
   return (
     <OrbitControls
-      ref={controlsRef}
+      ref={handleControlsRef}
+      makeDefault
+      camera={activeCamera}
       enableDamping
       dampingFactor={cameraView === 'radar' ? 0.06 : 0.08}
       zoomSpeed={cameraView === 'radar' ? 0.4 : 0.45}
@@ -668,6 +653,9 @@ function CameraRig({
       minPolarAngle={0}
       minDistance={cameraView === 'radar' ? 0 : 8}
       maxDistance={cameraView === 'radar' ? Infinity : 180}
+      onChange={handleControlsChange}
+      onStart={handleControlsStart}
+      onEnd={handleControlsEnd}
     />
   );
 }
@@ -709,12 +697,18 @@ export default function Scene({
   onFinishGuardReturn,
   resetCounter,
   cameraPose = DEFAULT_CAMERA_POSE,
+  perspPose,
+  radarPose,
   onCameraChange,
 }: SceneProps) {
+  const activePose = cameraView === 'radar'
+    ? (radarPose || cameraPose || OVERVIEW_RADAR_POSE)
+    : (perspPose || cameraPose || OVERVIEW_PERSPECTIVE_POSE);
+
   return (
     <>
       <Canvas
-        camera={{ position: cameraPose.position, fov: 44 }}
+        camera={{ position: activePose.position, fov: 44 }}
         shadows
         gl={{ antialias: true }}
         style={{ width: '100%', height: '100%' }}
@@ -725,6 +719,8 @@ export default function Scene({
           selectedSectorId={selectedSectorId}
           sectorFlyTrigger={sectorFlyTrigger}
           cameraPose={cameraPose}
+          perspPose={perspPose}
+          radarPose={radarPose}
           onCameraChange={onCameraChange}
           resetCounter={resetCounter}
         />

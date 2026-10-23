@@ -141,6 +141,8 @@ export default function ParkOverview() {
     selectedPlannedLidar,
     setSelectedPlannedLidar,
     cameraPose,
+    perspPose,
+    radarPose,
     setCameraPose,
     cameraView,
     setCameraView,
@@ -641,6 +643,8 @@ export default function ParkOverview() {
               onFinishGuardReturn={removeDispatchedGuard}
               resetCounter={resetCounter}
               cameraPose={cameraPose}
+              perspPose={perspPose}
+              radarPose={radarPose}
               onCameraChange={setCameraPose}
             />
             <span className="canvas-stamp" aria-hidden="true">
