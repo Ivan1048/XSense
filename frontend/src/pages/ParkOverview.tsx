@@ -1,7 +1,7 @@
 import CaptureStatus from '../components/System/CaptureStatus';
 // Park Overview — default guard console view.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Scene from '../components/Park3D/Scene';
 import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
@@ -9,10 +9,16 @@ import StatusLabel from '../components/StatusLabel';
 import AlertCard from '../components/AlertCard';
 import { PLANNED_LIDARS, LIDAR_PLAN_NOTE } from '../data/lidarPlan';
 import { POLES } from '../data/parkData';
+import { OPERATIONAL_LIDARS } from '../data/lidarData';
+import { PERSONA_DEFINITIONS } from '../data/personaData';
+import { getGlobalPersonaStates, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
+import type { PersonaActionType } from '../types/persona';
+import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 import { usePark } from '../context/ParkContext';
 import { getAudioSampleFileUrl } from '../services/api';
 import { recordLiveMicToWavBlob } from '../utils/audioWavEncoder';
 import { alertFocusKey, nextFocusAlert } from '../utils/alertFocus';
+import VisitorControlCenter, { type VisitorDetectionRecord } from '../components/Sidebar/VisitorControlCenter';
 
 const BENCHMARK_SAMPLES = [
   {
@@ -141,11 +147,14 @@ export default function ParkOverview() {
     setSelectedLidarId,
     simulationDiagnostics,
     clearSimulationDiagnostics,
+    observationsByCluster,
     showLidarPlan,
     setShowLidarPlan,
     selectedPlannedLidar,
     setSelectedPlannedLidar,
     cameraPose,
+    perspPose,
+    radarPose,
     setCameraPose,
     cameraView,
     setCameraView,
@@ -189,6 +198,144 @@ export default function ParkOverview() {
   const [sectorFlyTrigger, setSectorFlyTrigger] = useState<number>(0);
   const [autoFocusAlert, setAutoFocusAlert] = useState(false);
   const previousAlertsRef = useRef(new Map<string, string>());
+
+  // 4 Hz throttled runtime position reader for selected persona (zero overhead on 60 FPS Three.js loop)
+  const [uiRuntimePos, setUiRuntimePos] = useState<[number, number, number]>([0, 0, 0]);
+
+  useEffect(() => {
+    if (selection.type !== 'person') return;
+    const personaIdx = selection.dotIndex;
+    const timer = setInterval(() => {
+      const states = getGlobalPersonaStates();
+      const p = states[personaIdx];
+      if (p) {
+        setUiRuntimePos(p.worldPosition);
+      }
+    }, 250);
+
+    const states = getGlobalPersonaStates();
+    if (states[personaIdx]) {
+      setUiRuntimePos(states[personaIdx].worldPosition);
+    }
+    return () => clearInterval(timer);
+  }, [selection]);
+
+  const {
+    states: personaStates,
+    backgroundActivityEnabled,
+    dispatchAction: dispatchPersonaAction,
+    recoverPersona,
+    toggleBackgroundActivity,
+  } = usePersonaStateMachine();
+
+  const [lastDetectionByPersonaId, setLastDetectionByPersonaId] = useState<Record<string, VisitorDetectionRecord | undefined>>({});
+  const [lastFeedbackMessage, setLastFeedbackMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLastDetectionByPersonaId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      PERSONA_DEFINITIONS.forEach((def, idx) => {
+        const clusterId = `LIDAR-P-0${idx + 1}`;
+        const obs = observationsByCluster[clusterId];
+        if (obs) {
+          next[def.id] = {
+            personaId: def.id,
+            clusterId,
+            verdict: obs.detected
+              ? `Fall Detected (${obs.primarySensorId || 'LiDAR'})`
+              : `Coverage Gap (${obs.reason || 'Not detected'})`,
+            sensorId: obs.primarySensorId ?? null,
+            poleId: obs.nearestPoleId ?? null,
+            distanceM: obs.distanceToNearestSensorM ?? null,
+            timestampIso: obs.timeStr,
+          };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [observationsByCluster]);
+
+  const selectedPersonaId =
+    selection.type === 'person'
+      ? PERSONA_DEFINITIONS[selection.dotIndex]?.id || PERSONA_DEFINITIONS[0].id
+      : PERSONA_DEFINITIONS[0].id;
+
+  const operationalLidarNodes = useMemo(() => {
+    return OPERATIONAL_LIDARS.map((s) => ({
+      id: s.id,
+      poleId: s.mountPoleId,
+      position: [s.position[0], s.mountHeightM, s.position[1]] as [number, number, number],
+      status: (s.mountPoleId === offlinePoleId ? 'offline' : 'online') as 'online' | 'offline',
+      minRangeM: s.minRangeM,
+      maxRangeM: s.nominalRangeM,
+    }));
+  }, [offlinePoleId]);
+
+  const personasForControlCenter = useMemo(() => {
+    const ACTION_LABELS: Record<string, { label: string; icon: string; variant?: 'default' | 'warning' | 'danger' }> = {
+      walk: { label: 'Walk', icon: '🚶' },
+      jog: { label: 'Jog', icon: '🏃' },
+      sprint: { label: 'Sprint', icon: '⚡' },
+      crouch: { label: 'Crouch', icon: '🧘' },
+      tie_shoelaces: { label: 'Tie Shoelaces', icon: '👟' },
+      sit: { label: 'Sit (Ground)', icon: '🧎' },
+      bench_rest: { label: 'Rest on Bench', icon: '🪑' },
+      check_phone: { label: 'Check Phone', icon: '📱' },
+      pause_tree: { label: 'Pause near Tree', icon: '🌳' },
+      yoga: { label: 'Yoga (Tree Pose)', icon: '🤸' },
+      jumping_jacks: { label: 'Jumping Jacks', icon: '⭐' },
+      talking: { label: 'Talking', icon: '💬' },
+      laughing: { label: 'Laughing', icon: '😄' },
+      whistling: { label: 'Whistling', icon: '🎵' },
+      child_crying: { label: 'Child Crying', icon: '😢' },
+      collapse: { label: 'Collapse (Fall)', icon: '⚠️', variant: 'danger' },
+      call_help: { label: 'Call for Help', icon: '🆘', variant: 'danger' },
+    };
+
+    const sectorLabels = [
+      'West Loop (Sector A)',
+      'Lake Loop & Bridge (Sector B)',
+      'East Promenade (Sector C)',
+      'North Entrance (Sector A)',
+      'South Perimeter (Sector C)',
+    ];
+
+    return PERSONA_DEFINITIONS.map((def, idx) => {
+      const runtime = personaStates[idx] || {
+        worldPosition: [0, 0, 0] as [number, number, number],
+        fsmState: 'autonomous_moving',
+        currentAction: 'walk',
+        stationaryDurationSec: 0,
+      };
+      const isCollapsed = runtime.fsmState === 'collapsed';
+      const isSelected = selection.type === 'person' && selection.dotIndex === idx;
+      const pos = isSelected ? uiRuntimePos : runtime.worldPosition;
+
+      return {
+        id: def.id,
+        number: idx + 1,
+        name: def.label,
+        roleLabel: def.label,
+        clusterId: `LIDAR-P-0${idx + 1}`,
+        sectorLabel: sectorLabels[idx] || 'Park Grounds',
+        state: runtime.fsmState,
+        activeAction: runtime.currentAction || 'walk',
+        position: pos,
+        heightM: isCollapsed ? 0.34 : 1.72,
+        motionStatus: isCollapsed
+          ? `Motionless (${runtime.stationaryDurationSec || 0}s)`
+          : `Active (${runtime.currentAction || 'moving'})`,
+        supportedActions: def.supportedActions.map((act) => ({
+          id: act,
+          label: ACTION_LABELS[act]?.label || act,
+          icon: ACTION_LABELS[act]?.icon,
+          variant: ACTION_LABELS[act]?.variant || (act === 'collapse' || act === 'call_help' ? 'danger' : 'default'),
+        })),
+      };
+    });
+  }, [personaStates, selection, uiRuntimePos]);
 
   useEffect(() => {
     const locatedIncidents = incidents.filter((incident) => sectorForAlert(incident.poleId));
@@ -331,16 +478,18 @@ export default function ParkOverview() {
   const handleSelectAnonymousDot = (dotIndex: number) => {
     const locations = [
       'West Loop · Near Pole AS-104',
-      'Central Path · Near Pole AS-103',
-      'East Exit · Near Pole AS-105',
-      'West Loop Pathways',
-      'North Entrance · Near Pole AS-101',
+      'Lake Loop & Footbridge · Near Pole AS-102',
+      'East Exit Promenade · Near Pole AS-105',
+      'North Entrance Connector · Near Pole AS-101',
+      'Southern Arc Pathway · Near Pole AS-103',
     ];
+    const states = getGlobalPersonaStates();
+    const p = states[dotIndex];
     setSelection({
       type: 'person',
       dotIndex,
       approxLocation: locations[dotIndex] || 'Park Pathway',
-      stationary: fallPoleId === 'AS-104' && dotIndex === 0,
+      stationary: p?.fsmState === 'collapsed',
     });
   };
 
@@ -598,19 +747,6 @@ export default function ParkOverview() {
               </div>
             )}
 
-            {simulationDiagnostics.length > 0 && (
-              <div role="log" aria-label="Simulation diagnostics" style={{padding:'10px 14px', background:'rgba(15,23,42,0.94)', color:'#e2e8f0', fontSize:12, maxHeight:160, overflowY:'auto'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                  <strong>Simulation Diagnostics (not live sensor events)</strong>
-                  <button type="button" onClick={clearSimulationDiagnostics} aria-label="Clear simulation diagnostics">Clear</button>
-                </div>
-                {simulationDiagnostics.slice(0, 5).map((diag) => (
-                  <div key={diag.id} style={{marginBottom:6}}>
-                    <strong>{diag.title}</strong> — {diag.details}
-                  </div>
-                ))}
-              </div>
-            )}
             <Scene
               locatedIncident={incidents.find((incident) => incident.id === locatedIncidentId && incident.status !== 'resolved' && incident.status !== 'false_alarm')}
               mapMode={mapMode}
@@ -628,6 +764,7 @@ export default function ParkOverview() {
               selectedPoleId={selectedPoleId}
               onSelectPole={handleSelectPole}
               onSelectAnonymousDot={handleSelectAnonymousDot}
+              selectedDotIndex={selection.type === 'person' ? selection.dotIndex : null}
               onSelectGuard={handleSelectGuard}
               selectedCameraId={selection.type === 'camera' ? selection.cameraId : null}
               onSelectCamera={handleSelectCamera}
@@ -648,6 +785,8 @@ export default function ParkOverview() {
               onFinishGuardReturn={removeDispatchedGuard}
               resetCounter={resetCounter}
               cameraPose={cameraPose}
+              perspPose={perspPose}
+              radarPose={radarPose}
               onCameraChange={setCameraPose}
             />
             <span className="canvas-stamp" aria-hidden="true">
@@ -694,9 +833,13 @@ export default function ParkOverview() {
           aria-label="Park details panel"
           style={{
             overflowY: 'auto',
+            overflowX: 'hidden',
             maxHeight: 'calc(100vh - 130px)',
             minHeight: 0,
-            paddingRight: '4px',
+            padding: '12px',
+            paddingTop: '12px',
+            boxSizing: 'border-box',
+            borderLeft: '1px solid rgba(148, 163, 184, 0.18)',
           }}
         >
           {/* Active Incidents / Safety Lighting Notice in Sidebar */}
@@ -1039,60 +1182,52 @@ export default function ParkOverview() {
 
             {/* State 3: Person (LiDAR) Selected */}
             {selection.type === 'person' && (
-              <>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '10px',
-                  }}
-                >
-                  <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
-                    Person Detected
-                  </h3>
-                  <span className="badge badge-teal" style={{ fontSize: 'var(--text-sm)' }}>
-                    Simulated LiDAR
-                  </span>
-                </div>
-
-                <div className="metric-row">
-                  <span className="metric-label">Detection Type</span>
-                  <span className="metric-value">Anonymous 3D Point Cluster</span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Approx. Location</span>
-                  <span className="metric-value">{selection.approxLocation}</span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">3D Cluster Height</span>
-                  <span className={`metric-value ${fallPoleId === 'AS-104' ? 'warn' : 'ok'}`}>
-                    {fallPoleId === 'AS-104'
-                      ? '0.34m (Collapsed to Ground)'
-                      : '1.72m (Standing Upright)'}
-                  </span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Motion Status</span>
-                  <span className={`metric-value ${fallPoleId === 'AS-104' ? 'warn' : 'ok'}`}>
-                    {fallPoleId === 'AS-104'
-                      ? 'Unusual Movement (Motionless 45s)'
-                      : isLookalikeStop
-                      ? 'Stopped Upright (No Alert)'
-                      : 'Walking along pathway'}
-                  </span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Identity Data</span>
-                  <span className="metric-value" style={{ color: 'var(--text-muted)' }}>
-                    None (Protected by design)
-                  </span>
-                </div>
-
-                <div className="notice notice-info mt-2" style={{ fontSize: 'var(--text-sm)' }}>
-                  <strong>LiDAR Privacy Safeguard:</strong> Anonymous 3D bounding-box geometry only. No facial recognition, identity, or continuous movement history is stored.
-                </div>
-              </>
+              <VisitorControlCenter
+                personas={personasForControlCenter}
+                selectedPersonaId={selectedPersonaId}
+                onSelectPersona={(pId) => {
+                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
+                  if (idx >= 0) handleSelectAnonymousDot(idx);
+                }}
+                onTriggerAction={(pId, actId) => {
+                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
+                  if (idx >= 0) {
+                    const res = dispatchPersonaAction(idx, actId as PersonaActionType);
+                    if (!res.success) {
+                      setLastFeedbackMessage(res.reason);
+                    } else {
+                      setLastFeedbackMessage(`Action "${actId}" activated for Visitor #${idx + 1}`);
+                      if (res.observation) {
+                        const obs = res.observation;
+                        setLastDetectionByPersonaId((prev) => ({
+                          ...prev,
+                          [pId]: {
+                            personaId: pId,
+                            clusterId: `LIDAR-P-0${idx + 1}`,
+                            verdict: obs.detected ? 'Fall Detected (Alert Triggered)' : 'Coverage Gap (Out of Range / Occluded)',
+                            sensorId: null,
+                            poleId: null,
+                            distanceM: null,
+                            timestampIso: new Date().toLocaleTimeString(),
+                          },
+                        }));
+                      }
+                    }
+                  }
+                }}
+                onRecoverPersona={(pId) => {
+                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
+                  if (idx >= 0) {
+                    recoverPersona(idx);
+                    setLastFeedbackMessage(`Visitor #${idx + 1} recovered to normal patrol loop`);
+                  }
+                }}
+                backgroundActivityEnabled={backgroundActivityEnabled}
+                onToggleBackgroundActivity={toggleBackgroundActivity}
+                operationalLidarNodes={operationalLidarNodes}
+                lastDetectionByPersonaId={lastDetectionByPersonaId}
+                lastFeedbackMessage={lastFeedbackMessage}
+              />
             )}
 
             {/* State 4: Guard Selected */}
@@ -1167,6 +1302,97 @@ export default function ParkOverview() {
                 })()}
               </>
             )}
+
+            {/* Event History (Collapsible Simulation Diagnostics) */}
+            <details
+              style={{
+                marginTop: '12px',
+                background: 'rgba(15, 23, 42, 0.65)',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                padding: '8px 10px',
+              }}
+            >
+              <summary
+                style={{
+                  fontWeight: 600,
+                  fontSize: 'var(--text-sm)',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>📜 Event History &amp; Diagnostics ({simulationDiagnostics.length})</span>
+                {simulationDiagnostics.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearSimulationDiagnostics();
+                    }}
+                    style={{
+                      fontSize: '11px',
+                      background: 'rgba(51, 65, 85, 0.5)',
+                      border: '1px solid #475569',
+                      color: '#cbd5e1',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                    }}
+                    aria-label="Clear diagnostic history"
+                  >
+                    Clear History
+                  </button>
+                )}
+              </summary>
+              <div style={{ marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                {simulationDiagnostics.length === 0 ? (
+                  <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', padding: '4px 0' }}>
+                    No historical simulation events recorded yet.
+                  </div>
+                ) : (
+                  simulationDiagnostics.slice(0, 10).map((diag) => {
+                    const clusterLabel =
+                      diag.personaIndex !== undefined
+                        ? `Cluster #0${diag.personaIndex + 1}`
+                        : diag.nearestPoleId
+                        ? `Pole ${diag.nearestPoleId}`
+                        : 'Park Area';
+                    const isGap = diag.eventType === 'coverage_gap_fall';
+                    return (
+                      <div
+                        key={diag.id}
+                        style={{
+                          marginBottom: '8px',
+                          paddingBottom: '8px',
+                          borderBottom: '1px solid rgba(51, 65, 85, 0.4)',
+                          fontSize: '11px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, marginBottom: 2 }}>
+                          <span style={{ color: isGap ? '#f59e0b' : '#38bdf8', fontWeight: 600 }}>
+                            {diag.title}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '10px', whiteSpace: 'nowrap' }}>
+                            {diag.timestamp}
+                          </span>
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '10px', marginBottom: 2 }}>
+                          Target: <strong style={{ color: '#cbd5e1' }}>{clusterLabel}</strong> ·{' '}
+                          <span style={{ color: '#64748b' }}>HISTORICAL LOG</span>
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '10px', lineHeight: 1.35 }}>
+                          {diag.details}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </details>
           </div>
 
           {/* 2. LiDAR Placement Study · 16 Proposed */}

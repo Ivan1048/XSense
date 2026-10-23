@@ -188,6 +188,23 @@ for (let i = 0; i < triangles.length; i += 9) {
 assert(triangles.length > 0 && meshMatches, 'Every sampled mesh triangle centroid passes detection geometry and excludes dead zone');
 assert(generateLidarCoverageTriangles(edgeSensor, [], true).length === 0, 'Offline sensor hides sampled coverage');
 
+// ── Test 9: Sector D Residential Expansion & Intentional Gap ────────────────
+console.log('\n[Suite 9: Sector D Residential Expansion & Intentional Gap]');
+// Point on Sector D walkway at [15.0, 11.0] (dist to AS-106 [18,12] is 3.16m, clear line of sight)
+const evalSectorD = evaluateCollapseAgainstAllLidars([15.0, 0.34, 11.0], null, null);
+assert(evalSectorD.detected === true, 'Fall on Sector D residential walkway is DETECTED by LID-005');
+assert(evalSectorD.primarySensor?.sensorId === 'LID-005', 'Primary sensor is LID-005');
+assert(evalSectorD.primarySensor?.poleId === 'AS-106', 'Mounted on pole AS-106');
+
+// Gating when AS-106 is offline
+const evalSectorDOffline = evaluateCollapseAgainstAllLidars([15.0, 0.34, 11.0], 'AS-106', null);
+assert(evalSectorDOffline.detected === false, 'Fall on Sector D walkway is gated when AS-106 is offline');
+
+// Intentional coverage gap point: Southern Lake Loop at [4.8, -13.2]
+const evalIntentionalGap = evaluateCollapseAgainstAllLidars([4.8, 0.34, -13.2], null, null);
+assert(evalIntentionalGap.detected === false, 'Intentional coverage gap at [4.8, -13.2] is NOT detected');
+assert(evalIntentionalGap.distanceToNearestSensorM > 13.5, 'Distance to nearest operational sensor exceeds 13.5m');
+
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===\n`);
 if (failed > 0) {
   process.exit(1);

@@ -27,6 +27,23 @@ import {
 import { linkDemoFallIncident, stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 
+export interface PersonaObservationRecord<T = LidarEvaluationResult> {
+  clusterId: string;
+  personaIndex: number;
+  timestampMs: number;
+  timeStr: string;
+  detected: boolean;
+  scenarioKind: string;
+  primarySensorId?: string;
+  nearestPoleId?: string;
+  distanceToNearestSensorM: number;
+  reason: string;
+  result?: T;
+}
+
+export type ObservationByCluster<T = LidarEvaluationResult> =
+  Record<string, PersonaObservationRecord<T> | undefined>;
+
 interface ParkContextType {
   // Incidents
   incidents: Incident[];
@@ -85,6 +102,8 @@ interface ParkContextType {
   setSelectedLidarId: React.Dispatch<React.SetStateAction<string | null>>;
   simulationDiagnostics: SimulationDiagnosticEntry[];
   clearSimulationDiagnostics: () => void;
+  observationsByCluster: ObservationByCluster;
+  clearObservationsByCluster: () => void;
   showLidarPlan: boolean;
   setShowLidarPlan: React.Dispatch<React.SetStateAction<boolean>>;
   selectedPlannedLidar: string;
@@ -223,6 +242,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearSimulationDiagnostics = useCallback(() => {
     setSimulationDiagnostics([]);
+  }, []);
+  const [observationsByCluster, setObservationsByCluster] = useState<ObservationByCluster>({});
+  const clearObservationsByCluster = useCallback(() => {
+    setObservationsByCluster({});
   }, []);
   const [selectedPlannedLidar, setSelectedPlannedLidar] = useState<string>('');
   const [perspPose, setPerspPose] = useState<CameraPose>(OVERVIEW_PERSPECTIVE_POSE);
@@ -442,6 +465,22 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
 
+          // Key observation record by the specific persona's cluster ID
+          const clusterId = `LIDAR-P-0${obs.personaIndex + 1}`;
+          const obsRecord: PersonaObservationRecord = {
+            clusterId,
+            personaIndex: obs.personaIndex,
+            timestampMs: nowEpoch,
+            timeStr: now,
+            detected: false,
+            scenarioKind: 'fall',
+            primarySensorId: undefined,
+            nearestPoleId: evalResult.nearestPoleId,
+            distanceToNearestSensorM: evalResult.distanceToNearestSensorM,
+            reason: evalResult.failureReason,
+          };
+          setObservationsByCluster((prev) => ({ ...prev, [clusterId]: obsRecord }));
+
           return {
             detected: false,
             reason: `Coverage Gap — Fall Not Detected by LiDAR: ${evalResult.failureReason}`,
@@ -526,6 +565,22 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         setSimulationDiagnostics((prev) => [diagEntry, ...prev.slice(0, 49)]);
 
+        // Key observation record by the specific persona's cluster ID
+        const clusterId = `LIDAR-P-0${obs.personaIndex + 1}`;
+        const obsRecord: PersonaObservationRecord = {
+          clusterId,
+          personaIndex: obs.personaIndex,
+          timestampMs: nowEpoch,
+          timeStr: now,
+          detected: true,
+          scenarioKind: 'fall',
+          primarySensorId: primary.sensorId,
+          nearestPoleId: primary.poleId,
+          distanceToNearestSensorM: primary.distanceM,
+          reason: `Detected by ${primary.sensorId} (${primary.distanceM}m away)`,
+        };
+        setObservationsByCluster((prev) => ({ ...prev, [clusterId]: obsRecord }));
+
         return {
           detected: true,
           reason: `Operational sensor ${primary.sensorId} detected fall (${primary.distanceM}m away).`,
@@ -598,12 +653,14 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLookalikeStop(false);
     setAcousticPoleId(null);
     setLightingNote('');
-    setCameraView('3d');
     setSelectedSectorId(null);
-    setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
-    setRadarPose(OVERVIEW_RADAR_POSE);
+    if (cameraView === 'radar') {
+      setRadarPose(OVERVIEW_RADAR_POSE);
+    } else {
+      setPerspPose(OVERVIEW_PERSPECTIVE_POSE);
+    }
     setResetCounter((c) => c + 1);
-  }, [resetAllPersonas]);
+  }, [resetAllPersonas, cameraView]);
 
   const setPoleLight = useCallback(
     (id: string, value: number) => {
@@ -1995,6 +2052,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedLidarId,
     simulationDiagnostics,
     clearSimulationDiagnostics,
+    observationsByCluster,
+    clearObservationsByCluster,
     showLidarPlan,
     setShowLidarPlan,
     selectedPlannedLidar,

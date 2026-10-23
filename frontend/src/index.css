@@ -539,10 +539,26 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   max-height: calc(100vh - 130px);
   background: var(--bg-surface);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid rgba(148, 163, 184, 0.18);
+  box-sizing: border-box;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.5);
 }
 
 .sidebar > .panel {
@@ -1500,7 +1516,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .sector-nav-scroll {
   min-width: 0;
-  flex: 1 1 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -1547,22 +1566,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   color: #64748b;
   margin-right: 4px;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .sector-nav-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 4px;
+  padding: 4px 8px;
   background: rgba(17, 29, 46, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 4px;
   color: #cbd5e1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.18s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sector-nav-btn:hover {

@@ -416,15 +416,24 @@ export default function PersonaCommandHUD({
                 flex: 1,
                 padding: '8px 10px',
                 borderRadius: 6,
-                border: '1px solid #334155',
-                background: schedulerEnabled ? 'rgba(2, 132, 199, 0.25)' : 'rgba(71, 85, 105, 0.35)',
+                border: schedulerEnabled ? '1px solid #0284c7' : '1px solid #334155',
+                background: schedulerEnabled ? 'rgba(2, 132, 199, 0.25)' : 'rgba(30, 41, 59, 0.65)',
                 color: schedulerEnabled ? '#7dd3fc' : '#94a3b8',
                 cursor: 'pointer',
                 fontSize: 11,
                 fontWeight: 600,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
               }}
             >
-              ⏱ Autonomous Scheduler: {schedulerEnabled ? 'ON' : 'OFF'}
+              <span>⏱ Background Visitor Activity: {schedulerEnabled ? 'ON' : 'OFF'}</span>
+              <span style={{ fontSize: 9, fontWeight: 400, opacity: 0.85 }}>
+                {schedulerEnabled
+                  ? 'ON: Benign background activities permitted'
+                  : 'OFF: Visitors walk normally · Manual demo mode'}
+              </span>
             </button>
           </div>
 

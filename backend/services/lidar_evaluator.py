@@ -33,6 +33,18 @@ OPERATIONAL_LIDARS = {
         "fov_deg": 210.0,
         "heading_deg": 55.0,
     },
+    "LID-005": {
+        "id": "LID-005",
+        "name": "Residential Promenade LiDAR Node",
+        "zone_id": "east_exit",
+        "pole_id": "AS-106",
+        "position": (18.0, 12.0),
+        "mount_height_m": 3.55,
+        "nominal_range_m": 13.5,
+        "min_range_m": 0.5,
+        "fov_deg": 210.0,
+        "heading_deg": 280.0,
+    },
 }
 
 # Authoritative Obstacles for Line-of-Sight Check

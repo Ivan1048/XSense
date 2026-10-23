@@ -223,7 +223,37 @@ export function subscribePersonaObservations(handler: (obs: PersonaObservation) 
   return () => { if (observationHandler === annotatedHandler) observationHandler = undefined; };
 }
 
-let isSchedulerActive = true;
+export const BENIGN_ACTION_ALLOWLIST: readonly PersonaActionType[] = [
+  'walk',
+  'jog',
+  'sprint',
+  'tie_shoelaces',
+  'check_phone',
+  'pause_tree',
+  'bench_rest',
+  'whistling',
+  'yoga',
+  'jumping_jacks',
+  'crouch',
+  'talking',
+  'laughing',
+  'sit',
+];
+
+// Authoritative toggle for background visitor activity (Default: OFF / Manual Demo Mode)
+let backgroundActivityEnabled = false;
+
+type BackgroundActivityListener = (enabled: boolean) => void;
+const activityListeners = new Set<BackgroundActivityListener>();
+
+export function isBackgroundActivityEnabled(): boolean {
+  return backgroundActivityEnabled;
+}
+
+export function setBackgroundActivityEnabled(enabled: boolean): void {
+  backgroundActivityEnabled = enabled;
+  activityListeners.forEach((l) => l(enabled));
+}
 
 function notifyListeners() {
   const snapshot = [...globalPersonaStates];
@@ -381,9 +411,81 @@ export function resetAllPersonaStates() {
   notifyListeners();
 }
 
+// ── Programmatic Simulation Scheduler Tick ────────────────────────────────────
+// Separates normal continuous movement from random background behavioral activities.
+// Can be called per-second by the timer loop or discrete-stepped by test suites.
+export function advanceSimulationSchedulerTick(deltaSeconds = 1): void {
+  globalPersonaStates.forEach((persona, i) => {
+    const def = PERSONA_DEFINITIONS[i];
+    if (!def) return;
+
+    // 1. Advance stationary time progression regardless of background activity toggle
+    if (persona.fsmState === 'collapsed' || persona.fsmState === 'performing_action') {
+      persona.stationaryDurationSec += deltaSeconds;
+    }
+
+    // 2. Auto-recovery: If performing an autonomous timed action (not manually overridden)
+    if (
+      !persona.isManualOverride &&
+      persona.fsmState === 'performing_action' &&
+      activeActionDurationRef.current[i] > 0
+    ) {
+      activeActionDurationRef.current[i] -= deltaSeconds;
+      if (activeActionDurationRef.current[i] <= 0) {
+        recoverPersonaState(i);
+      }
+      return;
+    }
+
+    // 3. SEPARATION: If Background Visitor Activity is OFF, do NOT schedule random activities
+    if (!backgroundActivityEnabled) return;
+
+    // 4. Strict Safety Validations before scheduling any background activity:
+    // - Persona must be marked schedulable
+    if (!persona.isAutonomousSchedulable) return;
+    // - Persona must NOT be collapsed
+    if (persona.fsmState === 'collapsed') return;
+    // - Persona must NOT be awaiting emergency response or calling for help
+    if (persona.fsmState === 'calling_help' || persona.currentAction === 'call_help') return;
+    // - Strict protection: NEVER override manual operator actions
+    if (persona.isManualOverride) return;
+    // - Only schedule when persona is currently in normal autonomous_moving
+    if (persona.fsmState !== 'autonomous_moving') return;
+
+    nextScheduledTimeRef.current[i] -= deltaSeconds;
+    if (nextScheduledTimeRef.current[i] <= 0) {
+      // Filter activities against explicit benign allowlist AND persona supported actions
+      const pool = def.autonomousActivities.filter(
+        (item) =>
+          BENIGN_ACTION_ALLOWLIST.includes(item.action) &&
+          def.supportedActions.includes(item.action)
+      );
+      if (!pool.length) return;
+
+      const totalWeight = pool.reduce((sum, item) => sum + item.weight, 0);
+      let rand = Math.random() * totalWeight;
+      let chosen = pool[0];
+
+      for (const item of pool) {
+        if (rand < item.weight) {
+          chosen = item;
+          break;
+        }
+        rand -= item.weight;
+      }
+
+      // Dispatch chosen benign activity autonomously (marked with isAutonomous = true)
+      dispatchPersonaAction(i, chosen.action, chosen.durationSec, true);
+
+      // Reset next autonomous schedule window (30-55 seconds)
+      nextScheduledTimeRef.current[i] = 30 + Math.floor(Math.random() * 25);
+    }
+  });
+}
+
 export function usePersonaStateMachine(ownsScheduler = false) {
   const [states, setStates] = useState<ExtendedPersonaRuntimeState[]>(() => globalPersonaStates);
-  const [schedulerEnabled, setSchedulerEnabled] = useState<boolean>(() => isSchedulerActive);
+  const [backgroundActivity, setBackgroundActivity] = useState<boolean>(() => backgroundActivityEnabled);
 
   useEffect(() => {
     const handleUpdate: PersonaStateListener = (newStates) => {
@@ -395,81 +497,45 @@ export function usePersonaStateMachine(ownsScheduler = false) {
     };
   }, []);
 
+  useEffect(() => {
+    const handleActivity: BackgroundActivityListener = (enabled) => {
+      setBackgroundActivity(enabled);
+    };
+    activityListeners.add(handleActivity);
+    return () => {
+      activityListeners.delete(handleActivity);
+    };
+  }, []);
+
   const dispatchAction = useCallback(dispatchPersonaAction, []);
   const recoverPersona = useCallback(recoverPersonaState, []);
   const resetAllPersonas = useCallback(resetAllPersonaStates, []);
 
-  // ── Toggle Autonomous Scheduler ───────────────────────────────────────────
-  const toggleScheduler = useCallback((enabled?: boolean) => {
-    isSchedulerActive = enabled !== undefined ? enabled : !isSchedulerActive;
-    setSchedulerEnabled(isSchedulerActive);
+  // ── Toggle Background Activity / Scheduler ────────────────────────────────
+  const toggleBackgroundActivity = useCallback((enabled?: boolean) => {
+    const nextVal = enabled !== undefined ? enabled : !backgroundActivityEnabled;
+    setBackgroundActivityEnabled(nextVal);
   }, []);
 
-  // ── Autonomous Behavior Scheduler Loop (1 Hz Tick) ────────────────────────
+  // ── Single Authoritative Background Activity Loop (1 Hz Tick) ────────────
   useEffect(() => {
     if (!ownsScheduler) return;
     const interval = setInterval(() => {
-      if (!isSchedulerActive) return;
-
-      globalPersonaStates.forEach((persona, i) => {
-        const def = PERSONA_DEFINITIONS[i];
-        if (!def || !def.autonomousActivities.length) return;
-
-        // If collapsed or performing stationary action, increment duration
-        if (persona.fsmState === 'collapsed' || persona.fsmState === 'performing_action') {
-          persona.stationaryDurationSec += 1;
-        }
-
-        // If performing an autonomous timed action (not manually overridden)
-        if (!persona.isManualOverride && persona.fsmState === 'performing_action' && activeActionDurationRef.current[i] > 0) {
-          activeActionDurationRef.current[i] -= 1;
-          if (activeActionDurationRef.current[i] <= 0) {
-            // Auto-recovery: action complete, return smoothly to walking
-            recoverPersona(i);
-          }
-          return;
-        }
-
-        // STRICT SAFETY RULE: Do NOT override manual operator actions
-        if (persona.isManualOverride) return;
-
-        // Only schedule new autonomous normal activities if currently in autonomous_moving
-        if (persona.fsmState !== 'autonomous_moving') return;
-
-        nextScheduledTimeRef.current[i] -= 1;
-        if (nextScheduledTimeRef.current[i] <= 0) {
-          // Select an activity from the non-emergency autonomous pool
-          const pool = def.autonomousActivities;
-          const totalWeight = pool.reduce((sum, item) => sum + item.weight, 0);
-          let rand = Math.random() * totalWeight;
-          let chosen = pool[0];
-
-          for (const item of pool) {
-            if (rand < item.weight) {
-              chosen = item;
-              break;
-            }
-            rand -= item.weight;
-          }
-
-          // Trigger chosen normal activity autonomously
-          dispatchAction(i, chosen.action, chosen.durationSec, true);
-
-          // Reset next autonomous schedule window (30-55 seconds)
-          nextScheduledTimeRef.current[i] = 30 + Math.floor(Math.random() * 25);
-        }
-      });
+      advanceSimulationSchedulerTick(1);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [dispatchAction, recoverPersona, ownsScheduler]);
+  }, [ownsScheduler]);
 
   return {
     states,
-    schedulerEnabled,
+    schedulerEnabled: backgroundActivity,
+    backgroundActivityEnabled: backgroundActivity,
     dispatchAction,
     recoverPersona,
     resetAllPersonas,
-    toggleScheduler,
+    toggleScheduler: toggleBackgroundActivity,
+    toggleBackgroundActivity,
+    setBackgroundActivityEnabled: toggleBackgroundActivity,
   };
 }

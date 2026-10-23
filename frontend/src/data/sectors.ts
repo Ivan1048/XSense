@@ -131,9 +131,9 @@ export const SECTORS: Record<SectorId, SectorConfig> = {
     title: 'Residential Edge & Woods',
     subtitle: 'East Exit, Woodland Ridge & Perimeter Road',
     description:
-      'Demonstration security sector covering the eastern park boundary, residential neighborhood access, woodland ridge buffer, and East Exit link. Monitored by smart pole AS-105 and CAM-02.',
-    landmarks: ['East Exit Plaza (AS-105)', 'Residential Perimeter Arterial', 'Woodland Ridge Contour', 'CAM-02 Approach'],
-    operationalDevices: ['AS-105', 'CAM-02'],
+      'Demonstration security sector covering the eastern park boundary, residential neighborhood access, woodland ridge buffer, and East Exit link. Monitored by smart poles AS-105 & AS-106, LID-005, AUD-005, and CAM-02.',
+    landmarks: ['East Exit Plaza (AS-105)', 'Residential Promenade (AS-106)', 'Residential Perimeter Arterial', 'Woodland Ridge Contour', 'CAM-02 Approach'],
+    operationalDevices: ['AS-105', 'AS-106', 'LID-005', 'AUD-005', 'CAM-02'],
     target: [16, 0, 5],
     perspectivePosition: [38, 36, 31],
     radarPosition: [16, 100, 5],

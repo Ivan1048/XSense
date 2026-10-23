@@ -388,3 +388,39 @@ export function generateLidarCoverageTriangles(sensor: LidarSensorDefinition, ob
   }
   return vertices;
 }
+
+export interface PointLidarCoverageResult {
+  isCovered: boolean;
+  nearestSensorId: string | null;
+  nearestPoleId: string | null;
+  distanceM: number | null;
+  reason?: string;
+}
+
+export function evaluatePointLidarCoverage(
+  point: [number, number, number],
+  operationalLidarNodes?: Array<{
+    id: string;
+    poleId: string;
+    position: [number, number, number];
+    status: 'online' | 'offline';
+    minRangeM?: number;
+    maxRangeM?: number;
+  }>,
+  offlinePoleId?: string | null,
+  blockedRouteZone?: string | null,
+): PointLidarCoverageResult {
+  let effectiveOfflinePole = offlinePoleId ?? null;
+  if (!effectiveOfflinePole && operationalLidarNodes) {
+    const offlineNode = operationalLidarNodes.find((n) => n.status === 'offline');
+    if (offlineNode) effectiveOfflinePole = offlineNode.poleId;
+  }
+  const result = evaluateCollapseAgainstAllLidars(point, effectiveOfflinePole, blockedRouteZone);
+  return {
+    isCovered: result.detected,
+    nearestSensorId: result.primarySensor?.sensorId ?? (result.nearestPoleId ? `LIDAR-${result.nearestPoleId}` : null),
+    nearestPoleId: result.nearestPoleId ?? null,
+    distanceM: result.distanceToNearestSensorM,
+    reason: result.failureReason || undefined,
+  };
+}
