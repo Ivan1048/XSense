@@ -697,6 +697,8 @@ export default function AnonymousHumanoid({
       {personaDef.accessoryType === 'child_companion' && (
         <ChildCompanion
           parentGroupRef={groupRef}
+          initialParentPos={initialPos}
+          initialParentYaw={runtimeState?.headingAngleRad ?? currentYawRef.current}
           currentAction={effectiveAction}
           isCollapsed={isProne}
           paused={paused}
@@ -706,6 +708,8 @@ export default function AnonymousHumanoid({
       {personaDef.accessoryType === 'dog_companion' && (
         <CanineCompanion
           walkerGroupRef={groupRef}
+          initialParentPos={initialPos}
+          initialParentYaw={runtimeState?.headingAngleRad ?? currentYawRef.current}
           currentAction={effectiveAction}
           isCollapsed={isProne}
           paused={paused}
