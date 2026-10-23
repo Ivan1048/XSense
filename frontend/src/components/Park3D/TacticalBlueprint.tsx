@@ -626,7 +626,7 @@ export default function TacticalBlueprint({
 
       {/* ── Blocked Route Barrier (Operational Alert State) ───────────────── */}
       {blockedRouteZone === 'central_path' && (
-        <group position={[1.0, 0.38, 1.0]}>
+        <group position={[1.1, 0.38, -0.6]}>
           <mesh position={[0, 0.35, 0]}>
             <boxGeometry args={[3.0, 0.32, 0.22]} />
             <meshStandardMaterial color="#dc2626" emissive="#991b1b" emissiveIntensity={0.65} />
