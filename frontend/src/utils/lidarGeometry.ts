@@ -58,7 +58,7 @@ export function calculateBearingDeg(from: [number, number], to: [number, number]
   const rad = Math.atan2(dx, -dz);
   let deg = (rad * 180) / Math.PI;
   if (deg < 0) deg += 360;
-  return Number(deg.toFixed(1));
+  return deg;
 }
 
 // ── 2. 3D Line-of-Sight Ray Obstacle Intersection ───────────────────────────
@@ -80,96 +80,49 @@ export function checkRayIntersectsObstacle(
     return { hit: false, distance: Infinity, obstacleName: obs.name };
   }
 
-  const dirX = dx / rayLen;
-  const dirZ = dz / rayLen;
-
+  // Intersect the horizontal footprint and vertical slab over the entire segment.
+  let entry = 0;
+  let exit = 1;
   if (obs.type === 'cylinder') {
-    const radius = obs.radius || 0.6;
-    const toCenterStart = [obs.position[0] - rayStart[0], obs.position[1] - rayStart[1]];
-    const tProj = toCenterStart[0] * dirX + toCenterStart[1] * dirZ;
-
-    // Nearest point along the 2D ray line
-    const tClamped = Math.max(0, Math.min(rayLen, tProj));
-    const closestPt = [rayStart[0] + tClamped * dirX, rayStart[1] + tClamped * dirZ];
-    const distToCenter = Math.hypot(obs.position[0] - closestPt[0], obs.position[1] - closestPt[1]);
-
-    if (distToCenter <= radius) {
-      // Ray passes through horizontal footprint. Check 3D ray height at this point.
-      const fraction = tClamped / rayLen;
-      const rayHeightAtHit = startHeightM + fraction * (endHeightM - startHeightM);
-
-      // Check if ray height is below obstacle top and above ground
-      if (rayHeightAtHit >= 0 && rayHeightAtHit <= obs.heightM) {
-        // Compute entry point distance
-        const halfChord = Math.sqrt(Math.max(0, radius * radius - distToCenter * distToCenter));
-        const entryT = tProj - halfChord;
-
-        // Ignore hits behind the sensor mount (e.g. < 0.4m from origin) or past the target
-        if (entryT > 0.4 && entryT < rayLen - 0.1) {
-          return { hit: true, distance: entryT, obstacleName: obs.name };
-        }
-      }
-    }
-  } else if (obs.type === 'box') {
-    const [boxW, boxD] = obs.size || [1, 1];
-    const rot = -(obs.rotationY || 0);
-
-    // Transform ray start and end into box local coordinates
-    const localStart = [rayStart[0] - obs.position[0], rayStart[1] - obs.position[1]];
-    const localEnd = [rayEnd[0] - obs.position[0], rayEnd[1] - obs.position[1]];
-
-    const cosR = Math.cos(rot);
-    const sinR = Math.sin(rot);
-
-    const sX = localStart[0] * cosR - localStart[1] * sinR;
-    const sZ = localStart[0] * sinR + localStart[1] * cosR;
-    const eX = localEnd[0] * cosR - localEnd[1] * sinR;
-    const eZ = localEnd[0] * sinR + localEnd[1] * cosR;
-
-    const minX = -boxW / 2;
-    const maxX = boxW / 2;
-    const minZ = -boxD / 2;
-    const maxZ = boxD / 2;
-
-    // Liang-Barsky 2D line clipping in local coordinate space
-    const dLocalX = eX - sX;
-    const dLocalZ = eZ - sZ;
-
-    let t0 = 0.0;
-    let t1 = 1.0;
-
-    const p = [-dLocalX, dLocalX, -dLocalZ, dLocalZ];
-    const q = [sX - minX, maxX - sX, sZ - minZ, maxZ - sZ];
-
-    let intersectsAABB = true;
-    for (let i = 0; i < 4; i++) {
-      if (Math.abs(p[i]) < 1e-6) {
-        if (q[i] < 0) {
-          intersectsAABB = false;
-          break;
-        }
+    const radius = obs.radius ?? 0.6;
+    const ox = rayStart[0] - obs.position[0];
+    const oz = rayStart[1] - obs.position[1];
+    const proj = -(ox * dx + oz * dz) / (rayLen * rayLen);
+    const discriminant = proj * proj - (ox * ox + oz * oz - radius * radius) / (rayLen * rayLen);
+    if (discriminant < 0) return { hit: false, distance: Infinity, obstacleName: obs.name };
+    entry = Math.max(entry, proj - Math.sqrt(discriminant));
+    exit = Math.min(exit, proj + Math.sqrt(discriminant));
+  } else {
+    // Three.js Y rotation: inverse transform from world X/Z to local X/Z.
+    const c = Math.cos(obs.rotationY ?? 0);
+    const sn = Math.sin(obs.rotationY ?? 0);
+    const ox = rayStart[0] - obs.position[0];
+    const oz = rayStart[1] - obs.position[1];
+    const starts = [c * ox - sn * oz, sn * ox + c * oz];
+    const deltas = [c * dx - sn * dz, sn * dx + c * dz];
+    const size = obs.size ?? [1, 1];
+    for (let axis = 0; axis < 2; axis++) {
+      if (Math.abs(deltas[axis]) < 1e-9) {
+        if (Math.abs(starts[axis]) > size[axis] / 2) return { hit: false, distance: Infinity, obstacleName: obs.name };
       } else {
-        const t = q[i] / p[i];
-        if (p[i] < 0) {
-          if (t > t1) { intersectsAABB = false; break; }
-          if (t > t0) t0 = t;
-        } else {
-          if (t < t0) { intersectsAABB = false; break; }
-          if (t < t1) t1 = t;
-        }
+        const tA = (-size[axis] / 2 - starts[axis]) / deltas[axis];
+        const tB = (size[axis] / 2 - starts[axis]) / deltas[axis];
+        entry = Math.max(entry, Math.min(tA, tB));
+        exit = Math.min(exit, Math.max(tA, tB));
       }
     }
-
-    if (intersectsAABB && t0 <= t1) {
-      const hitFraction = t0;
-      const hitDist = hitFraction * rayLen;
-      if (hitDist > 0.4 && hitDist < rayLen - 0.1) {
-        const rayHeightAtHit = startHeightM + hitFraction * (endHeightM - startHeightM);
-        if (rayHeightAtHit >= 0 && rayHeightAtHit <= obs.heightM) {
-          return { hit: true, distance: hitDist, obstacleName: obs.name };
-        }
-      }
-    }
+  }
+  const dh = endHeightM - startHeightM;
+  if (Math.abs(dh) < 1e-9) {
+    if (startHeightM < 0 || startHeightM > obs.heightM) exit = -1;
+  } else {
+    const tA = -startHeightM / dh;
+    const tB = (obs.heightM - startHeightM) / dh;
+    entry = Math.max(entry, Math.min(tA, tB));
+    exit = Math.min(exit, Math.max(tA, tB));
+  }
+  if (entry <= exit && exit >= 0 && entry <= 1) {
+    return { hit: true, distance: Math.max(0, entry) * rayLen, obstacleName: obs.name };
   }
 
   return { hit: false, distance: Infinity, obstacleName: obs.name };
@@ -193,11 +146,11 @@ export function evaluateLidarCoverageForSensor(
   const statusNote = statusPassed ? 'Sensor online and reporting healthy heartbeats' : `Sensor ${sensor.id} on pole ${sensor.mountPoleId} is OFFLINE`;
 
   // 2. Range Check
-  const rangePassed = dist >= sensor.minRangeM && dist <= sensor.nominalRangeM;
+  const rangePassed = dist >= sensor.minRangeM - 1e-9 && dist <= sensor.nominalRangeM + 1e-9;
 
   // 3. FOV Check
   const halfFov = sensor.fovDeg / 2;
-  const fovPassed = fovDiff <= halfFov;
+  const fovPassed = fovDiff <= halfFov + 1e-9;
 
   // 4. Line of Sight Obstacle Check (only perform if range and FOV passed)
   let losPassed = true;
@@ -318,7 +271,7 @@ export function evaluateCollapseAgainstAllLidars(
     allSensorEvaluations: sensorEvaluations,
     failureReason: reasonText,
     diagnosticTitle: 'Coverage Gap — Fall Not Detected by LiDAR',
-    diagnosticDetails: `Target at [${px.toFixed(1)}, ${pz.toFixed(1)}] could not be verified by any operational LiDAR. Nearest node was ${nearestSensor.sensorId} on ${nearestSensor.poleId} (${minDistance.toFixed(1)}m away): ${reasonText}.`,
+    diagnosticDetails: `Target at [${px.toFixed(1)}, ${pz.toFixed(1)}] could not be verified by any operational LiDAR. Nearest node was ${nearestSensor?.sensorId ?? 'none'} on ${nearestSensor?.poleId ?? 'none'} (${minDistance.toFixed(1)}m away): ${reasonText}.`,
     nearestPoleId: nearestSensor?.poleId,
     distanceToNearestSensorM: Number(minDistance.toFixed(1)),
   };
@@ -371,8 +324,8 @@ export function generateLidarCoveragePolygonPoints(
         [-0.4, 0.4].forEach((offset) => {
           const a1 = leftEdge + offset;
           const a2 = rightEdge + offset;
-          if (angularDistanceDeg(a1, sensor.headingDeg) <= halfFov) angles.push(a1);
-          if (angularDistanceDeg(a2, sensor.headingDeg) <= halfFov) angles.push(a2);
+          if (angularDistanceDeg(a1, sensor.headingDeg) <= halfFov) angles.push(startAngle + normalizeAngleDeg(a1 - startAngle));
+          if (angularDistanceDeg(a2, sensor.headingDeg) <= halfFov) angles.push(startAngle + normalizeAngleDeg(a2 - startAngle));
         });
       }
     }
@@ -412,4 +365,26 @@ export function generateLidarCoveragePolygonPoints(
   }
 
   return boundaryPoints;
+}
+
+// Sample the actual person-down visibility field, including the mount dead zone
+// and regions visible beyond low obstacles. A single radial fan cannot model these holes.
+export function generateLidarCoverageTriangles(sensor: LidarSensorDefinition, obstacles: ObstacleDefinition[], isOffline: boolean): number[] {
+  if (isOffline) return [];
+  const vertices: number[] = [];
+  const radialSteps = Math.ceil((sensor.nominalRangeM - sensor.minRangeM) / 0.25);
+  const angularSteps = Math.ceil(sensor.fovDeg / 2);
+  const point = (r: number, a: number): [number, number] => [sensor.position[0] + r * Math.sin(a), sensor.position[1] - r * Math.cos(a)];
+  for (let ai = 0; ai < angularSteps; ai++) {
+    const a0 = (sensor.headingDeg - sensor.fovDeg / 2 + ai * sensor.fovDeg / angularSteps) * Math.PI / 180;
+    const a1 = a0 + sensor.fovDeg / angularSteps * Math.PI / 180;
+    for (let ri = 0; ri < radialSteps; ri++) {
+      const r0 = sensor.minRangeM + ri * (sensor.nominalRangeM - sensor.minRangeM) / radialSteps;
+      const r1 = sensor.minRangeM + (ri + 1) * (sensor.nominalRangeM - sensor.minRangeM) / radialSteps;
+      const corners = [point(r0, a0), point(r1, a0), point(r1, a1), point(r0, a1)];
+      if (![...corners, point((r0 + r1) / 2, (a0 + a1) / 2)].every(p => evaluateLidarCoverageForSensor(p, sensor, obstacles, false).detected)) continue;
+      for (const i of [0, 1, 2, 0, 2, 3]) vertices.push(corners[i][0], 0.065, corners[i][1]);
+    }
+  }
+  return vertices;
 }

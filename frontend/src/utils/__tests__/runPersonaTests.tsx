@@ -1,0 +1,67 @@
+import React from 'react';
+import { create, act } from 'react-test-renderer';
+import assert from 'node:assert/strict';
+import { ParkProvider, usePark } from '../../context/ParkContext';
+import { PERSONA_DEFINITIONS } from '../../data/personaData';
+import { usePersonaStateMachine } from '../../hooks/usePersonaStateMachine';
+let park: any, persona: any;
+let intervals = 0;
+const callbacks = new Map<number, Function>();
+globalThis.setInterval = ((fn: Function) => { callbacks.set(++intervals, fn); return intervals; }) as any;
+globalThis.clearInterval = ((id: number) => callbacks.delete(id)) as any;
+globalThis.fetch = (async () => { throw new Error('Backend unavailable in fallback regression'); }) as any;
+function Probe() { park = usePark(); persona = usePersonaStateMachine(); return null; }
+let root: any;
+act(() => { root = create(<ParkProvider><Probe/><Probe/></ParkProvider>); });
+assert.equal(callbacks.size, 1, 'Exactly one scheduler despite multiple consumers');
+const reset = () => act(() => { park.handleReset(); persona.resetAllPersonas(); });
+const fall = (pos: number[], autonomous = false) => {
+  persona.states[0].worldPosition = pos;
+  let result: any;
+  act(() => { result = persona.dispatchAction(0, 'collapse', undefined, autonomous); });
+  return result;
+};
+for (const autonomous of [false, true]) {
+  reset();
+  const before = JSON.stringify(park.lighting);
+  const events = park.events.length;
+  assert.equal(fall([9.5, .34, -11.5], autonomous).observation.detected, false);
+  assert.equal(park.incidents.length, 0);
+  assert.equal(park.events.length, events);
+  assert.equal(JSON.stringify(park.lighting), before);
+  assert.equal(park.simulationDiagnostics[0].eventType, 'coverage_gap_fall');
+  const count = park.simulationDiagnostics.length;
+  act(() => { persona.dispatchAction(0, 'collapse'); });
+  assert.equal(park.simulationDiagnostics.length, count, 'Repeated collapse is not reported twice');
+  reset();
+  assert.equal(fall([-10.5, .34, 11.5], autonomous).observation.detected, true);
+  assert.equal(park.incidents.length, 1);
+  assert.equal(park.incidents[0].poleId, 'AS-104');
+  assert.equal(park.lighting['AS-104'], 100);
+}
+reset();
+persona.states[0].worldPosition = [-10.5, .34, 11.5];
+const normalPool = PERSONA_DEFINITIONS[0].autonomousActivities;
+PERSONA_DEFINITIONS[0].autonomousActivities = [{ action: 'collapse', durationSec: 1, weight: 1 }];
+act(() => { for (let tick = 0; tick < 29; tick++) callbacks.forEach(fn => fn()); });
+assert.equal(park.incidents.length, 1, 'Actual autonomous scheduler collapse reaches geometry gate');
+assert.equal(park.simulationDiagnostics.filter(d => d.eventType === 'detected_fall').length, 1);
+PERSONA_DEFINITIONS[0].autonomousActivities = normalPool;
+reset();
+act(() => { park.triggerOffline(); });
+const incidentCount = park.incidents.length;
+const lightState = JSON.stringify(park.lighting);
+assert.equal(fall([0, .34, -3], true).observation.detected, false);
+assert.equal(park.incidents.length, incidentCount);
+assert.equal(JSON.stringify(park.lighting), lightState);
+assert.equal(park.simulationDiagnostics[0].checks.sensorStatus.passed, false);
+reset();
+await act(async () => { await park.triggerSilentFall(); });
+assert.equal(park.incidents.length, 1, 'Demo fallback creates a geometrically valid fall');
+assert.deepEqual(persona.states[0].worldPosition, [-11, .34, 9.5], 'Demo pose matches evaluated world position');
+assert.equal(persona.states[0].fsmState, 'collapsed');
+act(() => root.unmount());
+assert.equal(callbacks.size, 0);
+console.log('PASS: manual/autonomous valid and missed collapses, repeat dedup, offline diagnostics, demo fallback, scheduler ownership/cleanup');
+
+process.exit(0);

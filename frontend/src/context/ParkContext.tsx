@@ -23,6 +23,7 @@ import {
   evaluateLidarScenario,
   evaluateSensorFusion,
 } from '../services/api';
+import { stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 
 interface ParkContextType {
@@ -167,6 +168,7 @@ function loadSessionState(): {
 }
 
 export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { resetAllPersonas } = usePersonaStateMachine(true);
   const [selectedPoleId, setSelectedPoleId] = useState<string>('AS-103');
   const [lighting, setLighting] = useState<LightingMap>(initialLighting);
   const [lightingNote, setLightingNote] = useState<string>('');
@@ -410,7 +412,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
             nearestPoleId: evalResult.nearestPoleId,
             distanceToNearestSensorM: evalResult.distanceToNearestSensorM,
             failureReason: evalResult.failureReason,
-            checks: evalResult.allSensorEvaluations[0]?.checks || {
+            checks: evalResult.allSensorEvaluations.find(s => s.poleId === evalResult.nearestPoleId)?.checks || {
               sensorStatus: { passed: false, note: 'Offline' },
               range: { passed: false, distanceM: minDistance, maxRangeM: 13.0 },
               fieldOfView: { passed: false, angleDeg: 0, fovDeg: 0 },
@@ -566,6 +568,8 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [addEvent, blockedRouteZone, offlinePoleId, upsertSensorIncident],
   );
 
+  useEffect(() => subscribePersonaObservations(reportPersonaObservation), [reportPersonaObservation]);
+
   const resetView = useCallback(() => {
     setCameraView('3d');
     setSelectedSectorId(null);
@@ -658,6 +662,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedPoleId('AS-104');
 
     const targetPos: [number, number, number] = [-11.0, 0.34, 9.5];
+    stageDemoCollapse(0, targetPos);
     const isRouteBlocked = blockedRouteZone === 'central_path';
 
     // Authoritative geometric evaluation check
@@ -709,6 +714,17 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
+    // A backend response must not present a positive detection after the local gate missed.
+    if (!evalGeo.detected) {
+      evalResult = {
+        ...evalResult, detected: false, trigger_incident: false,
+        event_type: 'coverage_gap_missed', priority: 'coverage_warning',
+        plain_label: evalGeo.diagnosticTitle, plain_reason: evalGeo.failureReason,
+        lighting_boost_pct: null,
+        lighting_note: 'No automatic light boost (Coverage Gap — Fall Not Detected by LiDAR).',
+      };
+    }
+
     const now = new Date().toLocaleTimeString();
     const nowEpoch = Date.now();
 
@@ -728,7 +744,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nearestPoleId: evalGeo.nearestPoleId,
         distanceToNearestSensorM: evalGeo.distanceToNearestSensorM,
         failureReason: evalGeo.failureReason || evalResult.plain_reason,
-        checks: evalGeo.allSensorEvaluations[0]?.checks || {
+        checks: evalGeo.allSensorEvaluations.find(s => s.poleId === evalGeo.nearestPoleId)?.checks || {
           sensorStatus: { passed: false, note: 'Offline' },
           range: { passed: false, distanceM: 0, maxRangeM: 13.0 },
           fieldOfView: { passed: false, angleDeg: 0, fovDeg: 0 },
@@ -864,6 +880,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedPoleId('AS-104');
 
     const targetPos: [number, number, number] = [-11.0, 0.34, 9.5];
+    stageDemoCollapse(0, targetPos);
     const isRouteBlocked = blockedRouteZone === 'central_path';
 
     // Verify LiDAR fall detection geometry before corroborating
@@ -884,7 +901,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nearestPoleId: evalGeo.nearestPoleId,
         distanceToNearestSensorM: evalGeo.distanceToNearestSensorM,
         failureReason: evalGeo.failureReason,
-        checks: evalGeo.allSensorEvaluations[0]?.checks || {
+        checks: evalGeo.allSensorEvaluations.find(s => s.poleId === evalGeo.nearestPoleId)?.checks || {
           sensorStatus: { passed: false, note: 'Offline' },
           range: { passed: false, distanceM: 0, maxRangeM: 13.0 },
           fieldOfView: { passed: false, angleDeg: 0, fovDeg: 0 },
@@ -1317,6 +1334,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 9. Reset All Scenarios
   const handleReset = useCallback(() => {
+    resetAllPersonas();
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {

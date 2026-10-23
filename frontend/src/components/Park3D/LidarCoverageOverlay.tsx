@@ -3,11 +3,11 @@
 // Shows field of view boundaries, nominal range arcs, and obstacle shadow wedges.
 // Explicitly dims or hides offline sensors to maintain truth in presentation.
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import { OPERATIONAL_LIDARS, PARK_OBSTACLES, type LidarSensorDefinition } from '../../data/lidarData';
-import { generateLidarCoveragePolygonPoints } from '../../utils/lidarGeometry';
+import { generateLidarCoverageTriangles } from '../../utils/lidarGeometry';
 
 interface LidarCoverageOverlayProps {
   showCoverage: boolean;
@@ -45,48 +45,16 @@ function SingleLidarMesh({
     });
   }, [blockedRouteZone]);
 
-  // Compute boundary polygon points using authoritative ray-marched geometry
-  const polygonPoints = useMemo(() => {
-    return generateLidarCoveragePolygonPoints(sensor, activeObstacles, isOffline, 90);
-  }, [sensor, activeObstacles, isOffline]);
-
-  // Build triangulated fan geometry from origin [sx, sz]
+  // Sampled person-down coverage; small cells preserve dead zones and visibility holes.
   const geometry = useMemo(() => {
-    if (polygonPoints.length < 3 || isOffline) return null;
-
-    const vertices: number[] = [];
-    const indices: number[] = [];
-
-    // Vertex 0: Sensor Origin at y = 0.065
-    vertices.push(sx, 0.065, sz);
-
-    // Peripheral boundary vertices
-    polygonPoints.forEach(([px, pz]) => {
-      vertices.push(px, 0.065, pz);
-    });
-
-    // Triangulate fan: (0, i, i + 1)
-    for (let i = 1; i < polygonPoints.length; i++) {
-      indices.push(0, i, i + 1);
-    }
-
+    const vertices = generateLidarCoverageTriangles(sensor, activeObstacles, isOffline);
+    if (!vertices.length) return null;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geom.setIndex(indices);
     geom.computeVertexNormals();
     return geom;
-  }, [polygonPoints, sx, sz, isOffline]);
-
-  // Boundary perimeter line for clean contrast
-  const lineGeometry = useMemo(() => {
-    if (polygonPoints.length < 2 || isOffline) return null;
-    const pts = [
-      new THREE.Vector3(sx, 0.068, sz),
-      ...polygonPoints.map(([px, pz]) => new THREE.Vector3(px, 0.068, pz)),
-      new THREE.Vector3(sx, 0.068, sz),
-    ];
-    return new THREE.BufferGeometry().setFromPoints(pts);
-  }, [polygonPoints, sx, sz, isOffline]);
+  }, [sensor, activeObstacles, isOffline]);
+  useEffect(() => () => { geometry?.dispose(); }, [geometry]);
 
   return (
     <group>
@@ -107,18 +75,6 @@ function SingleLidarMesh({
             depthWrite={false}
           />
         </mesh>
-      )}
-
-      {/* 2. Crisp boundary contour highlighting FOV limits and shadow edges */}
-      {lineGeometry && (
-        <lineLoop geometry={lineGeometry}>
-          <lineBasicMaterial
-            color={isSelected ? '#7dd3fc' : '#22d3ee'}
-            transparent
-            opacity={isSelected ? 0.85 : 0.45}
-            depthWrite={false}
-          />
-        </lineLoop>
       )}
 
       {/* 3. Offline Sensor Indicator (Dashed ring showing offline blind state) */}

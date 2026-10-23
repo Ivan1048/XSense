@@ -188,6 +188,11 @@ export default function AnonymousHumanoid({
     if (!groupRef.current) return;
 
     const delta = Math.min(rawDelta, 0.1);
+    // Collapsed runtime position is the ground truth used by the detection gate.
+    if (runtimeState?.fsmState === 'collapsed') {
+      groupRef.current.position.x = runtimeState.worldPosition[0];
+      groupRef.current.position.z = runtimeState.worldPosition[2];
+    }
     const curX = groupRef.current.position.x;
     const curZ = groupRef.current.position.z;
 
