@@ -1,10 +1,28 @@
 import { getEvidenceSnapshot } from '../../utils/detectionEvidence';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { PersonaActionType } from '../../types/persona';
 import { PERSONA_DEFINITIONS } from '../../data/personaData';
 import { usePersonaStateMachine } from '../../hooks/usePersonaStateMachine';
 import { evaluateCollapseAgainstAllLidars } from '../../utils/lidarGeometry';
 import { usePark } from '../../context/ParkContext';
+import {
+  personaAudioService,
+  PERSONA_SOUND_DEFINITIONS,
+  type AudioPlaybackResult,
+  type PersonaAudioState,
+} from '../../services/personaAudioService';
+
+/** Plain-language line describing what the operator just heard (or did not hear). */
+function describePlayback(result: AudioPlaybackResult): string {
+  const label = PERSONA_SOUND_DEFINITIONS[result.soundType]?.label ?? result.soundType;
+  if (result.success) {
+    return result.source === 'synthesized'
+      ? `Sound: synthesized ${label.toLowerCase()} tone played — not a recording.`
+      : `Sound: recorded “${label}” cue played.`;
+  }
+  if (result.reason === 'muted') return 'Sound muted — the action ran without audio.';
+  return `Sound unavailable — ${result.error ?? 'playback failed.'}`;
+}
 
 const ACTION_LABELS: Record<PersonaActionType, { label: string; icon: string; category: 'motion' | 'normal' | 'emergency' }> = {
   walk: { label: 'Walk', icon: '🚶', category: 'motion' },
@@ -41,6 +59,8 @@ export default function PersonaCommandHUD({
     incidentId?: string;
     category: 'emergency_detected' | 'coverage_gap' | 'rejected' | 'normal';
   } | null>(null);
+  const [audioState, setAudioState] = useState<PersonaAudioState>(() => personaAudioService.getState());
+  const [audioNote, setAudioNote] = useState<string | null>(null);
 
   const {
     states,
@@ -52,6 +72,17 @@ export default function PersonaCommandHUD({
   } = usePersonaStateMachine();
 
   const { offlinePoleId, blockedRouteZone } = usePark();
+
+  // Playback is presentation only: it never creates incidents, calls YAMNet, or
+  // marks a sensor as having heard anything. Stop the cue when the HUD unmounts.
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      personaAudioService.stop();
+    },
+    [],
+  );
 
   // Synchronize active tab if external selection changes
   const currentPersonaIndex = selectedIndex !== undefined && selectedIndex !== null ? selectedIndex : activeTab;
@@ -75,8 +106,16 @@ export default function PersonaCommandHUD({
         message: res.reason,
         category: 'rejected',
       });
+      personaAudioService.stop();
+      setAudioNote(null);
       return;
     }
+
+    // Audible cue for explicit operator actions only (autonomous runs stay silent).
+    void personaAudioService.playForAction(actionKey).then((result) => {
+      if (!mountedRef.current) return;
+      setAudioNote(result ? describePlayback(result) : null);
+    });
 
     if (res.observation) {
       const obsResult = res.observation;
@@ -98,11 +137,25 @@ export default function PersonaCommandHUD({
 
   const handleRecover = () => {
     recoverPersona(currentPersonaIndex);
+    personaAudioService.stop();
+    setAudioNote(null);
     setActionFeedback({
       detected: true,
       message: `Visitor #${currentPersonaIndex + 1} recovering to autonomous movement.`,
       category: 'normal',
     });
+  };
+
+  const handleToggleMute = () => {
+    const nextMuted = !audioState.muted;
+    personaAudioService.setMuted(nextMuted);
+    setAudioState(personaAudioService.getState());
+    setAudioNote(nextMuted ? 'Persona sound muted.' : 'Persona sound on.');
+  };
+
+  const handleVolumeChange = (value: number) => {
+    personaAudioService.setVolume(value / 100);
+    setAudioState(personaAudioService.getState());
   };
 
   return (
@@ -145,6 +198,25 @@ export default function PersonaCommandHUD({
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
+            type="button"
+            onClick={handleToggleMute}
+            aria-pressed={audioState.muted}
+            aria-label={audioState.muted ? 'Unmute persona sound' : 'Mute persona sound'}
+            title={audioState.muted ? 'Persona sound is muted' : 'Persona sound is on'}
+            style={{
+              background: audioState.muted ? 'rgba(220, 38, 38, 0.25)' : 'transparent',
+              border: audioState.muted ? '1px solid #ef4444' : '1px solid transparent',
+              borderRadius: 6,
+              color: audioState.muted ? '#fca5a5' : '#94a3b8',
+              cursor: 'pointer',
+              fontSize: 12,
+              padding: '2px 8px',
+            }}
+          >
+            {audioState.muted ? '🔇 Muted' : '🔊 Sound'}
+          </button>
+          <button
+            type="button"
             onClick={() => setIsCollapsedHUD(!isCollapsedHUD)}
             style={{
               background: 'transparent',
@@ -178,6 +250,11 @@ export default function PersonaCommandHUD({
                   <button
                     key={def.id}
                     onClick={() => {
+                      if (idx !== currentPersonaIndex) {
+                        // A cue belongs to the persona that was on screen; drop it.
+                        personaAudioService.stop();
+                        setAudioNote(null);
+                      }
                       setActiveTab(idx);
                       onSelectPersona?.(idx);
                       setActionFeedback(null);
@@ -390,6 +467,31 @@ export default function PersonaCommandHUD({
                 );
               })}
             </div>
+          </div>
+
+          {/* ── Sound Cue Controls ────────────────────────────────────────── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700 }}>
+                SOUND
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(audioState.volume * 100)}
+                onChange={(event) => handleVolumeChange(Number(event.target.value))}
+                aria-label="Persona sound volume"
+                style={{ flex: 1, accentColor: '#38bdf8', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 10, color: '#94a3b8', width: 34, textAlign: 'right' }}>
+                {audioState.muted ? 'Muted' : `${Math.round(audioState.volume * 100)}%`}
+              </span>
+            </div>
+            {audioNote && (
+              <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.4 }}>{audioNote}</div>
+            )}
           </div>
 
           {/* ── Operator Control Bar ───────────────────────────────────────── */}

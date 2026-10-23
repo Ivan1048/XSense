@@ -230,6 +230,10 @@ stateDiagram-v2
 | **Benign Rain / Noise** | Ambient precipitation acoustics | `normal` | **Normal / Info** (`SIMULATED`) | Telemetry log only. **No emergency incident generated.** |
 | **Resident SOS** | Web portal emergency trigger | `urgent` | **High Priority** (`SIMULATED`) | Immediate urgent alert; skips AI validation gate. |
 
+### Persona sound cues (demonstration playback)
+
+Operator-triggered persona actions (call for help, whistle, child crying, laughing, talking) play one audible cue at a time through a single frontend service (`personaAudioService`). Recorded cues use the ESC-50 samples served by `GET /api/audio/files/{id}`; the whistle is a clearly labelled synthesized tone because no recording exists. Playback is presentation only: it creates no incident, runs no YAMNet inference, and never marks an acoustic sensor as having heard anything. Mute and volume are local operator preferences, and a playback failure is reported in the HUD instead of failing silently.
+
 ---
 
 ## 8. Backend Architecture & API Specification

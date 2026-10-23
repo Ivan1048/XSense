@@ -26,6 +26,7 @@ import {
 } from '../services/api';
 import { linkDemoFallIncident, stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
+import { personaAudioService } from '../services/personaAudioService';
 
 interface ParkContextType {
   // Incidents
@@ -1365,6 +1366,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleReset = useCallback(() => {
     clearDetectionEvidence();
     resetAllPersonas();
+    personaAudioService.stop();
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
