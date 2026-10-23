@@ -45,6 +45,14 @@ export const POLES: PoleData[] = [
     sensorStatus: 'online',
     lightSetting: 70,
   },
+  {
+    id: 'AS-106',
+    name: 'Residential Promenade',
+    position: [18, 12],
+    zone: 'east_exit',
+    sensorStatus: 'online',
+    lightSetting: 70,
+  },
 ];
 
 export const ZONES: ZoneData[] = [

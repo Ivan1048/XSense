@@ -63,6 +63,20 @@ export const OPERATIONAL_LIDARS: LidarSensorDefinition[] = [
     headingDeg: 55, // Aimed North-East/East (+55°) into the West Loop pedestrian arc
     description: 'High-risk unmonitored curve benchmark. Evaluates height drop and ground immobility along West Loop.',
   },
+  {
+    id: 'LID-005',
+    name: 'Residential Promenade LiDAR Node',
+    zoneId: 'east_exit',
+    zoneName: 'Residential Promenade',
+    mountPoleId: 'AS-106',
+    position: [18.0, 12.0],
+    mountHeightM: 3.55,
+    nominalRangeM: 13.5,
+    minRangeM: 0.5,
+    fovDeg: 210,
+    headingDeg: 280,
+    description: 'Monitors Sector D residential promenade and pedestrian access connector.',
+  },
 ];
 
 // ── 2. Authoritative Static & Dynamic Park Obstacles ────────────────────────

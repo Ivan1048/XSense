@@ -41,6 +41,20 @@ const HYBRID_DEVICE_INVENTORY = [
     mount: 'Pole AS-104',
     coverageBasis: 'Co-located with LID-002 for 15s spatio-temporal corroboration',
   },
+  {
+    id: 'LID-005',
+    kind: '3D LiDAR Node',
+    zone: 'Residential Promenade',
+    mount: 'Pole AS-106',
+    coverageBasis: 'Monitors Sector D residential promenade and pedestrian access connector',
+  },
+  {
+    id: 'AUD-005',
+    kind: 'Audio Node (YAMNet)',
+    zone: 'Residential Promenade',
+    mount: 'Pole AS-106',
+    coverageBasis: 'Co-located with LID-005 for 15s spatio-temporal corroboration (~12m radius)',
+  },
 ];
 
 export default function System() {
