@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import type { PersonaActionType } from '../../types/persona';
 import { PERSONA_DEFINITIONS } from '../../data/personaData';
 import { usePersonaStateMachine } from '../../hooks/usePersonaStateMachine';
-import { useKinematicTelemetry } from '../../hooks/useKinematicTelemetry';
+import { evaluateCollapseAgainstAllLidars } from '../../utils/lidarGeometry';
 import { usePark } from '../../context/ParkContext';
 
 const ACTION_LABELS: Record<PersonaActionType, { label: string; icon: string; category: 'motion' | 'normal' | 'emergency' }> = {
@@ -50,8 +50,7 @@ export default function PersonaCommandHUD({
     toggleScheduler,
   } = usePersonaStateMachine();
 
-  const { reportPersonaObservation } = usePark();
-  const { evaluateSensorCoverage } = useKinematicTelemetry();
+  const { reportPersonaObservation, offlinePoleId, blockedRouteZone } = usePark();
 
   // Synchronize active tab if external selection changes
   const currentPersonaIndex = selectedIndex !== undefined && selectedIndex !== null ? selectedIndex : activeTab;
@@ -60,8 +59,12 @@ export default function PersonaCommandHUD({
 
   // Evaluate real-time sensor coverage for current persona
   const coverage = useMemo(() => {
-    return evaluateSensorCoverage(currentPersona.worldPosition[0], currentPersona.worldPosition[2]);
-  }, [evaluateSensorCoverage, currentPersona.worldPosition]);
+    return evaluateCollapseAgainstAllLidars(
+      [currentPersona.worldPosition[0], 0.34, currentPersona.worldPosition[2]],
+      offlinePoleId,
+      blockedRouteZone,
+    );
+  }, [currentPersona.worldPosition, offlinePoleId, blockedRouteZone]);
 
   const handleTriggerAction = (actionKey: PersonaActionType) => {
     const res = dispatchAction(currentPersonaIndex, actionKey);
@@ -268,15 +271,15 @@ export default function PersonaCommandHUD({
                 fontSize: 11,
                 padding: '4px 8px',
                 borderRadius: 4,
-                background: coverage.isCovered ? 'rgba(6, 78, 59, 0.4)' : 'rgba(120, 53, 15, 0.4)',
-                border: `1px solid ${coverage.isCovered ? '#059669' : '#d97706'}`,
+                background: coverage.detected ? 'rgba(6, 78, 59, 0.4)' : 'rgba(120, 53, 15, 0.4)',
+                border: `1px solid ${coverage.detected ? '#059669' : '#d97706'}`,
               }}
             >
-              <span>{coverage.isCovered ? '📡' : '⚠️'}</span>
-              <span style={{ color: coverage.isCovered ? '#6ee7b7' : '#fde68a' }}>
-                {coverage.isCovered
-                  ? `Covered by Pole ${coverage.coveringPoleId} (${coverage.distanceToNearestPoleM}m)`
-                  : `COVERAGE GAP · Nearest: ${coverage.nearestPoleId} (${coverage.distanceToNearestPoleM}m)`}
+              <span>{coverage.detected ? '📡' : '⚠️'}</span>
+              <span style={{ color: coverage.detected ? '#6ee7b7' : '#fde68a' }}>
+                {coverage.detected
+                  ? `Covered by Pole ${coverage.primarySensor?.sensorId} (${coverage.distanceToNearestSensorM}m)`
+                  : `COVERAGE GAP · Nearest: ${coverage.nearestPoleId} (${coverage.distanceToNearestSensorM}m)`}
               </span>
             </div>
           </div>
@@ -449,7 +452,7 @@ export default function PersonaCommandHUD({
               • Height: {currentPersona.fsmState === 'collapsed' ? '0.34m (Collapsed)' : '1.72m (Upright)'} · Action: {currentPersona.currentAction}
             </div>
             <div>
-              • Sensor Status: {coverage.isCovered ? `Monitored by ${coverage.coveringPoleId}` : 'Outside Coverage'}
+              • Sensor Status: {coverage.detected ? `Monitored by ${coverage.primarySensor?.sensorId}` : 'Outside Coverage'}
             </div>
           </div>
         </div>
