@@ -1,13 +1,18 @@
 """Cross-language coverage check. Run from repository root after frontend npm ci."""
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_DIR = ROOT / "frontend"
 sys.path.insert(0, str(ROOT))
 from backend.services.lidar_evaluator import evaluate_lidar_scenario
+
+esbuild_bin = "esbuild.cmd" if os.name == "nt" else "esbuild"
+esbuild_path = FRONTEND_DIR / "node_modules" / ".bin" / esbuild_bin
 
 source = '''
 import { OPERATIONAL_LIDARS, PARK_OBSTACLES } from SENSOR_DATA;
@@ -24,7 +29,7 @@ with tempfile.TemporaryDirectory() as temp:
     entry = Path(temp) / 'parity.ts'
     bundle = Path(temp) / 'parity.mjs'
     entry.write_text(source)
-    subprocess.run([str(ROOT / 'frontend/node_modules/.bin/esbuild'), str(entry), '--bundle', '--platform=node', '--format=esm', f'--outfile={bundle}'], check=True)
+    subprocess.run([str(esbuild_path), str(entry), '--bundle', '--platform=node', '--format=esm', f'--outfile={bundle}'], check=True)
     cases = json.loads(subprocess.check_output(['node', str(bundle)]))
 for case in cases:
     result = evaluate_lidar_scenario('silent_fall', device_id=case['id'], person_position=case['pos'], route_blocked=case['blocked'], sensor_offline=case['offline'])
