@@ -118,6 +118,7 @@ function World({
   selectedCameraId = null,
   onSelectCamera,
   lighting,
+  lightingNote,
   showAudioCoverage,
   showLidarCoverage = true,
   selectedLidarId = null,
