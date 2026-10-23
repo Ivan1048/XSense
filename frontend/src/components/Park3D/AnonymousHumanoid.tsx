@@ -87,14 +87,17 @@ export default function AnonymousHumanoid({
 
   // Effective action combines external scene demonstration props with internal persona FSM
   const effectiveAction: PersonaActionType = useMemo(() => {
-    if (isCollapsed) return 'collapse';
+    if (!runtimeState && isCollapsed) return 'collapse';
     if (isSOS) return 'call_help';
     if (isLookalikeStop || stationary) return 'walk';
     return runtimeState?.currentAction || 'walk';
   }, [isCollapsed, isSOS, isLookalikeStop, stationary, runtimeState?.currentAction]);
 
   // Is the character currently in a collapsed ground state?
-  const isProne = isCollapsed || runtimeState?.fsmState === 'collapsed' || effectiveAction === 'collapse';
+  // Persona recovery owns the body pose; incident/legacy props cannot pin it down.
+  const isProne = runtimeState
+    ? runtimeState.fsmState === 'collapsed'
+    : isCollapsed || effectiveAction === 'collapse';
   const isSignalingHelp = isSOS || effectiveAction === 'call_help';
 
   const isEmergency = highlight || isProne || isSignalingHelp;
@@ -651,7 +654,7 @@ export default function AnonymousHumanoid({
               {isSignalingHelp
                 ? '🆘 Resident SOS · Help Requested Here'
                 : isProne
-                ? 'Unusual Movement · Height Collapsed (1.72m → 0.34m)'
+                ? 'Simulated visitor · Collapsed pose (ground truth)'
                 : isLookalikeStop
                 ? 'Standing Upright (1.72m) · Stopped Dot = No Alert'
                 : `Anonymous Person · ${effectiveAction.replace('_', ' ')} (${boxDim[1].toFixed(2)}m)`}
