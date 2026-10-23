@@ -3,7 +3,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { PerspectiveCamera } from 'three';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { Html, OrbitControls } from '@react-three/drei';
 import ParkGeometry from './ParkGeometry';
 import Pole from './Pole';
 import ParkSurroundings from './ParkSurroundings';
@@ -16,7 +16,7 @@ import GuardMarker from './GuardMarker';
 import PersonaCommandHUD from '../HUD/PersonaCommandHUD';
 import CameraAndGapOverlay from './CameraAndGapOverlay';
 import { POLES, PEOPLE_PATHS } from '../../data/parkData';
-import type { LightingMap, DispatchedGuardState, CameraPose, CameraViewMode } from '../../types';
+import type { LightingMap, DispatchedGuardState, CameraPose, CameraViewMode, Incident } from '../../types';
 import { DEFAULT_CAMERA_POSE } from '../../types';
 import type { SectorId } from '../../data/sectors';
 import {
@@ -30,6 +30,7 @@ import {
 } from '../../data/sectors';
 
 interface SceneProps {
+  locatedIncident?: Incident;
   mapMode?: 'blueprint' | 'assets';
   cameraView?: CameraViewMode;
   selectedSectorId?: SectorId | null;
@@ -104,6 +105,7 @@ function ResponsiveFraming({
 }
 
 function World({
+  locatedIncident,
   mapMode = 'blueprint',
   showDeviceLabels,
   showStudyPosts,
@@ -171,6 +173,25 @@ function World({
           <ParkSurroundings nightMode={nightMode} />
         </>
       )}
+
+      {locatedIncident && (() => {
+        const pole = POLES.find((item) => item.id === locatedIncident.poleId);
+        if (!pole) return null;
+        const [x, z] = pole.position;
+        return <group position={[x, 0.15, z]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[2.2, 2.6, 48]} />
+            <meshBasicMaterial color="#fbbf24" side={THREE.DoubleSide} depthWrite={false} />
+          </mesh>
+          <Html position={[0, 6, 0]} center style={{ pointerEvents: 'none' }}>
+            <div style={{ background: '#172536', color: '#fff', border: '2px solid #fbbf24', borderRadius: 8, padding: '8px 12px', width: 260, fontSize: 16 }}>
+              <strong>{locatedIncident.displayType}</strong><br />
+              {locatedIncident.id} · {locatedIncident.zoneName}<br />
+              Approximate sensor location · {pole.id}
+            </div>
+          </Html>
+        </group>;
+      })()}
 
       {/* Authoritative Operational LiDAR Coverage Overlay (with FOV and shadow cutouts) */}
       <LidarCoverageOverlay
@@ -673,6 +694,7 @@ function CameraRig({
 }
 
 export default function Scene({
+  locatedIncident,
   mapMode = 'blueprint',
   cameraView = '3d',
   selectedSectorId = null,
@@ -729,6 +751,7 @@ export default function Scene({
           resetCounter={resetCounter}
         />
         <World
+          locatedIncident={locatedIncident}
           mapMode={mapMode}
           showStudyPosts={showStudyPosts}
           showLidarRanges={showLidarRanges}

@@ -5,6 +5,7 @@ import { Edges, Html } from '@react-three/drei';
 import type { AnonymousHumanoidProps, PersonaActionType } from '../../types/persona';
 import { PERSONA_DEFINITIONS } from '../../data/personaData';
 import { usePersonaStateMachine } from '../../hooks/usePersonaStateMachine';
+import { usePark } from '../../context/ParkContext';
 import { ChildCompanion, CanineCompanion } from './CompanionPrimitives';
 
 // ── Shared Static Geometries ────────────────────────────────────────────────
@@ -100,14 +101,23 @@ export default function AnonymousHumanoid({
     : isCollapsed || effectiveAction === 'collapse';
   const isSignalingHelp = isSOS || effectiveAction === 'call_help';
 
-  const isEmergency = highlight || isProne || isSignalingHelp;
+  const { incidents, fallPoleId, acousticPoleId } = usePark();
+  const caseIsActive = (id: string | undefined, fallbackActive: boolean) => {
+    const incident = id ? incidents.find((item) => item.id === id) : undefined;
+    return incident
+      ? incident.status !== 'resolved' && incident.status !== 'false_alarm'
+      : fallbackActive;
+  };
+  const showFallAlert = isProne && caseIsActive(runtimeState?.fallIncidentId, Boolean(fallPoleId));
+  const showHelpAlert = isSignalingHelp && (isSOS || caseIsActive(runtimeState?.helpIncidentId, Boolean(acousticPoleId)));
+  const isEmergency = highlight || showFallAlert || showHelpAlert;
   const showPostureBox = hovered || isLookalikeStop || isEmergency;
 
   // Root vertical height tracker (0.86m nominal waist height)
-  const currentY = useRef(0.86);
-  const progressRef = useRef(path.offset);
+  const currentY = useRef(runtimeState?.hasWorldPosition ? runtimeState.worldPosition[1] : 0.86);
+  const progressRef = useRef(runtimeState?.pathProgress ?? path.offset);
   const gaitPhaseRef = useRef(0);
-  const currentYawRef = useRef(0);
+  const currentYawRef = useRef(runtimeState?.headingAngleRad ?? 0);
   const jumpingJackPhaseRef = useRef(0);
 
   // Smooth CatmullRom spline
@@ -130,10 +140,14 @@ export default function AnonymousHumanoid({
     ];
   }, [curve, path.x, path.z, path.radius, path.offset]);
 
+  const mountPosition = useRef<[number, number, number]>(
+    runtimeState?.hasWorldPosition ? [...runtimeState.worldPosition] : initialPos,
+  );
+
   // Color tokens
-  const color = isEmergency ? (isSignalingHelp ? '#ef4444' : '#ffb759') : '#5ee6da';
-  const emissive = isEmergency ? (isSignalingHelp ? '#dc2626' : '#ea580c') : '#0e7490';
-  const wireColor = isEmergency ? (isSignalingHelp ? '#ef4444' : '#f59e0b') : '#38bdf8';
+  const color = isEmergency ? (showHelpAlert ? '#ef4444' : '#ffb759') : '#5ee6da';
+  const emissive = isEmergency ? (showHelpAlert ? '#dc2626' : '#ea580c') : '#0e7490';
+  const wireColor = isEmergency ? (showHelpAlert ? '#ef4444' : '#f59e0b') : '#38bdf8';
 
   const humanoidMaterial = useMemo(
     () =>
@@ -193,8 +207,9 @@ export default function AnonymousHumanoid({
     const delta = Math.min(rawDelta, 0.1);
     // Collapsed runtime position is the ground truth used by the detection gate.
     if (runtimeState?.fsmState === 'collapsed') {
-      groupRef.current.position.x = runtimeState.worldPosition[0];
-      groupRef.current.position.z = runtimeState.worldPosition[2];
+      const collapsePosition = runtimeState.collapsePosition ?? runtimeState.worldPosition;
+      groupRef.current.position.x = collapsePosition[0];
+      groupRef.current.position.z = collapsePosition[2];
     }
     const curX = groupRef.current.position.x;
     const curZ = groupRef.current.position.z;
@@ -219,10 +234,6 @@ export default function AnonymousHumanoid({
     currentY.current = THREE.MathUtils.damp(currentY.current, targetY, 6.0, delta);
     groupRef.current.position.y = currentY.current;
 
-    // Sync world position into runtimeState
-    if (runtimeState) {
-      runtimeState.worldPosition = [curX, currentY.current, curZ];
-    }
 
     // ── 2. SOS Pulse Ring ───────────────────────────────────────────────────
     if (isSignalingHelp && sosRingRef.current) {
@@ -267,6 +278,15 @@ export default function AnonymousHumanoid({
       }
 
       gaitPhaseRef.current += delta * effectiveSpeed * 8.5;
+    }
+
+    // Save the rendered position AFTER movement so route navigation restores
+    // the same location and progress instead of the path's starting waypoint.
+    if (runtimeState) {
+      runtimeState.worldPosition = [groupRef.current.position.x, currentY.current, groupRef.current.position.z];
+      runtimeState.hasWorldPosition = true;
+      runtimeState.pathProgress = progressRef.current;
+      runtimeState.headingAngleRad = currentYawRef.current;
     }
 
     // ── 4. Canonical Target Pose Calculation (Zero Overlapping Poses) ────────
@@ -524,7 +544,7 @@ export default function AnonymousHumanoid({
     <>
       <group
         ref={groupRef}
-        position={initialPos}
+        position={mountPosition.current}
         onClick={(e) => {
           e.stopPropagation();
           onSelect?.();
@@ -622,7 +642,7 @@ export default function AnonymousHumanoid({
         )}
 
         {/* Resident SOS Ground Pulse Ring */}
-        {isSignalingHelp && (
+        {showHelpAlert && (
           <mesh ref={sosRingRef} position={[0, -0.78, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={SHARED_GEOMETRIES.sosRing}>
             <meshBasicMaterial color="#ef4444" transparent opacity={0.7} side={THREE.DoubleSide} />
           </mesh>
@@ -639,7 +659,7 @@ export default function AnonymousHumanoid({
                 fontWeight: 600,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                background: isSignalingHelp
+                background: showHelpAlert
                   ? 'rgba(185, 28, 28, 0.95)'
                   : isProne
                   ? 'rgba(180, 83, 9, 0.94)'
@@ -651,7 +671,7 @@ export default function AnonymousHumanoid({
                 boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
               }}
             >
-              {isSignalingHelp
+              {showHelpAlert
                 ? '🆘 Resident SOS · Help Requested Here'
                 : isProne
                 ? 'Simulated visitor · Collapsed pose (ground truth)'

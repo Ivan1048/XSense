@@ -9,6 +9,12 @@ import { PERSONA_DEFINITIONS } from '../data/personaData';
 // ── Extended Runtime State with Manual Override Flag ────────────────────────
 export interface ExtendedPersonaRuntimeState extends PersonaRuntimeState {
   isManualOverride?: boolean;
+  // Simulation display links only; these never change incident lifecycle state.
+  hasWorldPosition?: boolean;
+  pathProgress?: number;
+  collapsePosition?: [number, number, number];
+  fallIncidentId?: string;
+  helpIncidentId?: string;
 }
 
 type PersonaStateListener = (states: ExtendedPersonaRuntimeState[]) => void;
@@ -34,9 +40,18 @@ export function stageDemoCollapse(personaIndex: number, position: [number, numbe
   const current = globalPersonaStates[personaIndex];
   if (!current) return;
   globalPersonaStates[personaIndex] = {
-    ...current, worldPosition: [...position], currentAction: 'collapse',
+    ...current, worldPosition: [...position], collapsePosition: [...position], hasWorldPosition: true,
+    fallIncidentId: undefined, helpIncidentId: undefined, currentAction: 'collapse',
     fsmState: 'collapsed', stationaryDurationSec: 0, isManualOverride: true,
   };
+  notifyListeners();
+}
+
+// Link a scripted demo actor only to the incident that its scenario created.
+export function linkDemoFallIncident(personaIndex: number, incidentId: string) {
+  const current = globalPersonaStates[personaIndex];
+  if (!current || current.fsmState !== 'collapsed') return;
+  globalPersonaStates[personaIndex] = { ...current, fallIncidentId: incidentId };
   notifyListeners();
 }
 
@@ -93,16 +108,18 @@ export function usePersonaStateMachine(ownsScheduler = false) {
       if (current.fsmState === 'collapsed') {
         if (action === 'call_help') {
           // Allowed: Signaling distress from the ground while remaining collapsed
+          const observation = observationHandler?.({
+            type: 'audio_distress', personaIndex,
+            worldPos: [current.worldPosition[0], current.worldPosition[2]], action,
+          });
           globalPersonaStates[personaIndex] = {
             ...current,
             currentAction: 'call_help',
+            helpIncidentId: observation?.incidentId,
             isManualOverride: true,
           };
           notifyListeners();
-          return { success: true, reason: 'Signaling distress from collapsed position', observation: observationHandler?.({
-            type: 'audio_distress', personaIndex,
-            worldPos: [current.worldPosition[0], current.worldPosition[2]], action,
-          }) };
+          return { success: true, reason: 'Signaling distress from collapsed position', observation };
         }
         if (action === 'collapse') {
           // Already collapsed; maintain collapsed state
@@ -134,6 +151,7 @@ export function usePersonaStateMachine(ownsScheduler = false) {
       globalPersonaStates[personaIndex] = {
         ...current,
         fsmState: nextFsmState,
+        collapsePosition: action === 'collapse' ? [...current.worldPosition] : current.collapsePosition,
         currentAction: action,
         stationaryDurationSec: action === 'collapse' ? 0 : current.stationaryDurationSec,
         isManualOverride: !isAutonomous, // Manual action locks out autonomous scheduler
@@ -147,6 +165,12 @@ export function usePersonaStateMachine(ownsScheduler = false) {
             action,
           })
         : undefined;
+      if (action === 'collapse' || action === 'call_help') {
+        globalPersonaStates[personaIndex] = {
+          ...globalPersonaStates[personaIndex],
+          [action === 'collapse' ? 'fallIncidentId' : 'helpIncidentId']: observation?.incidentId,
+        };
+      }
       notifyListeners();
       return { success: true, reason: `Action "${action}" activated`, observation };
     },
@@ -160,6 +184,9 @@ export function usePersonaStateMachine(ownsScheduler = false) {
 
     globalPersonaStates[personaIndex] = {
       ...globalPersonaStates[personaIndex],
+      fallIncidentId: undefined,
+      helpIncidentId: undefined,
+      collapsePosition: undefined,
       fsmState: 'recovering',
       currentAction: def.supportedActions[0] || 'walk',
       stationaryDurationSec: 0,

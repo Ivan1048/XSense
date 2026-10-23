@@ -1,7 +1,7 @@
 // Park Overview — default guard console view.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
 import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import Scene from '../components/Park3D/Scene';
 import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
 import StatusLabel from '../components/StatusLabel';
@@ -99,6 +99,10 @@ function sectorForAlert(poleId: string) {
 type DemoTab = 'lidar' | 'sound' | 'env';
 
 export default function ParkOverview() {
+  const location = useLocation();
+  const [locatedIncidentId, setLocatedIncidentId] = useState<string | null>(
+    () => location.state?.locatedIncidentId ?? null,
+  );
   const {
     selectedPoleId,
     setSelectedPoleId,
@@ -469,8 +473,8 @@ export default function ParkOverview() {
                 <button
                   id="reset-view-btn"
                   className="btn btn-sm btn-hud-reset"
-                  onClick={resetView}
-                  title="Reset camera and sector view to default overview"
+                  onClick={() => { setLocatedIncidentId(null); resetView(); }}
+                  title="Reset camera and simulated visitor actions; keep saved cases"
                 >
                   ↺ Reset View
                 </button>
@@ -606,6 +610,7 @@ export default function ParkOverview() {
               </div>
             )}
             <Scene
+              locatedIncident={incidents.find((incident) => incident.id === locatedIncidentId && incident.status !== 'resolved' && incident.status !== 'false_alarm')}
               mapMode={mapMode}
               cameraView={cameraView}
               selectedSectorId={selectedSectorId}
