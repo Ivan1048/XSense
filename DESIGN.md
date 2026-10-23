@@ -144,6 +144,7 @@ Built using **Three.js**, **React Three Fiber (R3F)**, and **Drei**, the 3D view
   - Interactive HTML nameplates with live status indicators.
   - **Acoustic Pulse Waves:** Concentric expanding ring geometry that pulses outward when acoustic distress is detected at that pole.
 - **Anonymous Movement Dots (`AnonymousDot.tsx`):** Simulated pedestrian markers that traverse circular path trajectories. Markers display **zero facial geometry, names, or persistent identities**. During fall simulations, the marker stops motion and displays an amber alert halo.
+- **CCTV Inventory (`CameraAndGapOverlay.tsx`):** Camera mounts, aim direction and an **estimated** ground footprint derived from the documented mount/aim estimate (4.2m mount, 12m range, 60° horizontal field of view). The same estimate drives `utils/cameraCoverage.ts`, so the map and the incident camera line cannot disagree. A drawn footprint is not a live feed, does not prove identification or fall detection, and must not be described as verified coverage.
 
 ---
 

@@ -1,9 +1,13 @@
-// Hybrid 3D Map Overlay: Independent CCTV Camera Inventory, Estimated Viewing Cones only.
-// Per product rules: Camera markers represent inventory and estimated viewing direction only — no live stream or AI CCTV analytics implied.
+// Hybrid 3D Map Overlay: Independent CCTV Camera Inventory, estimated footprints only.
+// Per product rules: camera markers represent inventory, aim direction and an
+// *estimated* ground footprint. No live stream, footage retrieval, identification
+// or AI CCTV analytics is implied, and the footprint is not a site survey.
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 
 import { CCTV_CAMERAS } from '../../data/cameraData';
+import { cameraFootprintSectorPoints } from '../../utils/cameraCoverage';
 export { CCTV_CAMERAS } from '../../data/cameraData';
 export type { CameraInventoryItem } from '../../data/cameraData';
 
@@ -20,10 +24,28 @@ export default function CameraAndGapOverlay({
   selectedCameraId,
   onSelectCamera,
 }: CameraAndGapOverlayProps) {
+  // Footprints come from the same estimate the coverage evaluator uses, so the
+  // map cannot promise coverage the incident logic does not agree with.
+  const footprints = useMemo(
+    () =>
+      CCTV_CAMERAS.map((cam) => {
+        const points = cameraFootprintSectorPoints(cam);
+        const shape = new THREE.Shape();
+        shape.moveTo(points[0][0], -points[0][1]);
+        for (let i = 1; i < points.length; i++) shape.lineTo(points[i][0], -points[i][1]);
+        const geometry = new THREE.ShapeGeometry(shape);
+        geometry.rotateX(-Math.PI / 2);
+        return { id: cam.id, geometry };
+      }),
+    [],
+  );
+
+  useEffect(() => () => footprints.forEach((footprint) => footprint.geometry.dispose()), [footprints]);
+
   return (
     <group>
-      {/* 1. CCTV Camera Fixtures & Downward-Aimed Viewing Cones */}
-      {CCTV_CAMERAS.map((cam) => {
+      {/* 1. CCTV Camera Fixtures & Estimated Ground Footprints */}
+      {CCTV_CAMERAS.map((cam, index) => {
         const [x, z] = cam.position;
         const [tx, tz] = cam.targetPoint;
         const dx = tx - x;
@@ -33,6 +55,19 @@ export default function CameraAndGapOverlay({
 
         return (
           <group key={cam.id} position={[x, 0, z]}>
+            {/* Estimated footprint only — not a verified field of view. */}
+            {showCCTV && (
+              <mesh geometry={footprints[index].geometry} position={[0, 0.07, 0]}>
+                <meshBasicMaterial
+                  color="#38bdf8"
+                  transparent
+                  opacity={isSelected ? 0.24 : 0.13}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+            )}
+
             {/* Independent Camera Mount Post */}
             <mesh
               position={[0, 2.1, 0]}
@@ -57,38 +92,6 @@ export default function CameraAndGapOverlay({
                 <boxGeometry args={[0.36, 0.26, 0.62]} />
                 <meshStandardMaterial color={isSelected ? '#38bdf8' : '#e2e8f0'} />
               </mesh>
-
-              {/* Downward-aimed viewing beam (Apex at lens, wide base on ground) */}
-              {showCCTV && (
-                <group rotation={[0.48, 0, 0]}>
-                  {/* In Three.js coneGeometry, apex is at +Y/2 and base is at -Y/2.
-                      Rotating X by -Math.PI/2 places apex at origin [0,0,0] and projects base toward +Z! */}
-                  <mesh position={[0, 0, 3.8]} rotation={[-Math.PI / 2, 0, 0]}>
-                    <coneGeometry args={[2.4, 7.6, 24, 1, true]} />
-                    <meshBasicMaterial
-                      color="#38bdf8"
-                      transparent
-                      opacity={0.13}
-                      side={THREE.DoubleSide}
-                      depthWrite={false}
-                    />
-                  </mesh>
-                </group>
-              )}
-
-              {/* Ground Footprint Sector on the Pathway */}
-              {showCCTV && (
-                <mesh position={[0, -4.14, 5.2]} rotation={[-Math.PI / 2, 0, 0]}>
-                  <circleGeometry args={[3.2, 32]} />
-                  <meshBasicMaterial
-                    color="#38bdf8"
-                    transparent
-                    opacity={0.18}
-                    side={THREE.DoubleSide}
-                    depthWrite={false}
-                  />
-                </mesh>
-              )}
             </group>
 
             {/* Camera HTML Badge */}
@@ -108,6 +111,11 @@ export default function CameraAndGapOverlay({
                 }}
               >
                 📹 {cam.id}
+                {showCCTV && (
+                  <span style={{ display: 'block', fontSize: 9, fontWeight: 500, opacity: 0.85 }}>
+                    Estimated coverage · not verified
+                  </span>
+                )}
               </button>
             </Html>}
           </group>

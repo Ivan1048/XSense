@@ -57,6 +57,12 @@ jobs:
           ./node_modules/.bin/esbuild src/utils/__tests__/runResidentialRouteTests.ts --bundle --platform=node --format=esm --outfile=/tmp/runResidentialRouteTests.mjs
           node /tmp/runResidentialRouteTests.mjs
 
+      - name: CCTV Blind Spot Tests (10/10)
+        working-directory: frontend
+        run: |
+          ./node_modules/.bin/esbuild src/utils/__tests__/runCctvBlindSpotTests.ts --bundle --platform=node --format=esm --outfile=/tmp/runCctvBlindSpotTests.mjs
+          node /tmp/runCctvBlindSpotTests.mjs
+
       - name: Backend Unit Tests
         run: python -m unittest discover -s backend/tests -v
 
