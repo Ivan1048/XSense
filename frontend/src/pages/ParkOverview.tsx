@@ -1,6 +1,6 @@
 // Park Overview — default guard console view.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Scene from '../components/Park3D/Scene';
 import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
@@ -8,13 +8,16 @@ import StatusLabel from '../components/StatusLabel';
 import AlertCard from '../components/AlertCard';
 import { PLANNED_LIDARS, LIDAR_PLAN_NOTE } from '../data/lidarPlan';
 import { POLES } from '../data/parkData';
+import { OPERATIONAL_LIDARS } from '../data/lidarData';
 import { PERSONA_DEFINITIONS } from '../data/personaData';
-import { getGlobalPersonaStates } from '../hooks/usePersonaStateMachine';
+import { getGlobalPersonaStates, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
+import type { PersonaActionType } from '../types/persona';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 import { usePark } from '../context/ParkContext';
 import { getAudioSampleFileUrl } from '../services/api';
 import { recordLiveMicToWavBlob } from '../utils/audioWavEncoder';
 import { alertFocusKey, nextFocusAlert } from '../utils/alertFocus';
+import VisitorControlCenter, { type VisitorDetectionRecord } from '../components/Sidebar/VisitorControlCenter';
 
 const BENCHMARK_SAMPLES = [
   {
@@ -211,6 +214,123 @@ export default function ParkOverview() {
     }
     return () => clearInterval(timer);
   }, [selection]);
+
+  const {
+    states: personaStates,
+    backgroundActivityEnabled,
+    dispatchAction: dispatchPersonaAction,
+    recoverPersona,
+    toggleBackgroundActivity,
+  } = usePersonaStateMachine();
+
+  const [lastDetectionByPersonaId, setLastDetectionByPersonaId] = useState<Record<string, VisitorDetectionRecord | undefined>>({});
+  const [lastFeedbackMessage, setLastFeedbackMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLastDetectionByPersonaId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      PERSONA_DEFINITIONS.forEach((def, idx) => {
+        const clusterId = `LIDAR-P-0${idx + 1}`;
+        const obs = observationsByCluster[clusterId];
+        if (obs) {
+          next[def.id] = {
+            personaId: def.id,
+            clusterId,
+            verdict: obs.detected
+              ? `Fall Detected (${obs.primarySensorId || 'LiDAR'})`
+              : `Coverage Gap (${obs.reason || 'Not detected'})`,
+            sensorId: obs.primarySensorId ?? null,
+            poleId: obs.nearestPoleId ?? null,
+            distanceM: obs.distanceToNearestSensorM ?? null,
+            timestampIso: obs.timeStr,
+          };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [observationsByCluster]);
+
+  const selectedPersonaId =
+    selection.type === 'person'
+      ? PERSONA_DEFINITIONS[selection.dotIndex]?.id || PERSONA_DEFINITIONS[0].id
+      : PERSONA_DEFINITIONS[0].id;
+
+  const operationalLidarNodes = useMemo(() => {
+    return OPERATIONAL_LIDARS.map((s) => ({
+      id: s.id,
+      poleId: s.mountPoleId,
+      position: [s.position[0], s.mountHeightM, s.position[1]] as [number, number, number],
+      status: (s.mountPoleId === offlinePoleId ? 'offline' : 'online') as 'online' | 'offline',
+      minRangeM: s.minRangeM,
+      maxRangeM: s.nominalRangeM,
+    }));
+  }, [offlinePoleId]);
+
+  const personasForControlCenter = useMemo(() => {
+    const ACTION_LABELS: Record<string, { label: string; icon: string; variant?: 'default' | 'warning' | 'danger' }> = {
+      walk: { label: 'Walk', icon: '🚶' },
+      jog: { label: 'Jog', icon: '🏃' },
+      sprint: { label: 'Sprint', icon: '⚡' },
+      crouch: { label: 'Crouch', icon: '🧘' },
+      tie_shoelaces: { label: 'Tie Shoelaces', icon: '👟' },
+      sit: { label: 'Sit (Ground)', icon: '🧎' },
+      bench_rest: { label: 'Rest on Bench', icon: '🪑' },
+      check_phone: { label: 'Check Phone', icon: '📱' },
+      pause_tree: { label: 'Pause near Tree', icon: '🌳' },
+      yoga: { label: 'Yoga (Tree Pose)', icon: '🤸' },
+      jumping_jacks: { label: 'Jumping Jacks', icon: '⭐' },
+      talking: { label: 'Talking', icon: '💬' },
+      laughing: { label: 'Laughing', icon: '😄' },
+      whistling: { label: 'Whistling', icon: '🎵' },
+      child_crying: { label: 'Child Crying', icon: '😢' },
+      collapse: { label: 'Collapse (Fall)', icon: '⚠️', variant: 'danger' },
+      call_help: { label: 'Call for Help', icon: '🆘', variant: 'danger' },
+    };
+
+    const sectorLabels = [
+      'West Loop (Sector A)',
+      'Lake Loop & Bridge (Sector B)',
+      'East Promenade (Sector C)',
+      'North Entrance (Sector A)',
+      'South Perimeter (Sector C)',
+    ];
+
+    return PERSONA_DEFINITIONS.map((def, idx) => {
+      const runtime = personaStates[idx] || {
+        worldPosition: [0, 0, 0] as [number, number, number],
+        fsmState: 'autonomous_moving',
+        currentAction: 'walk',
+        stationaryDurationSec: 0,
+      };
+      const isCollapsed = runtime.fsmState === 'collapsed';
+      const isSelected = selection.type === 'person' && selection.dotIndex === idx;
+      const pos = isSelected ? uiRuntimePos : runtime.worldPosition;
+
+      return {
+        id: def.id,
+        number: idx + 1,
+        name: def.label,
+        roleLabel: def.label,
+        clusterId: `LIDAR-P-0${idx + 1}`,
+        sectorLabel: sectorLabels[idx] || 'Park Grounds',
+        state: runtime.fsmState,
+        activeAction: runtime.currentAction || 'walk',
+        position: pos,
+        heightM: isCollapsed ? 0.34 : 1.72,
+        motionStatus: isCollapsed
+          ? `Motionless (${runtime.stationaryDurationSec || 0}s)`
+          : `Active (${runtime.currentAction || 'moving'})`,
+        supportedActions: def.supportedActions.map((act) => ({
+          id: act,
+          label: ACTION_LABELS[act]?.label || act,
+          icon: ACTION_LABELS[act]?.icon,
+          variant: ACTION_LABELS[act]?.variant || (act === 'collapse' || act === 'call_help' ? 'danger' : 'default'),
+        })),
+      };
+    });
+  }, [personaStates, selection, uiRuntimePos]);
 
   useEffect(() => {
     const locatedIncidents = incidents.filter((incident) => sectorForAlert(incident.poleId));
@@ -1050,142 +1170,54 @@ export default function ParkOverview() {
             )}
 
             {/* State 3: Person (LiDAR) Selected */}
-            {selection.type === 'person' && (() => {
-              const personaIdx = selection.dotIndex;
-              const personaDef = PERSONA_DEFINITIONS[personaIdx] || PERSONA_DEFINITIONS[0];
-              const clusterId = `LIDAR-P-0${personaIdx + 1}`;
-              const allStates = getGlobalPersonaStates();
-              const runtimePersona = allStates[personaIdx];
-              const liveCoverage = evaluateCollapseAgainstAllLidars(
-                [uiRuntimePos[0], 0.34, uiRuntimePos[2]],
-                offlinePoleId,
-                blockedRouteZone,
-              );
-              const clusterObs = observationsByCluster[clusterId];
-              const isCollapsed = runtimePersona?.fsmState === 'collapsed';
-
-              return (
-                <>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '8px',
-                    }}
-                  >
-                    <div>
-                      <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
-                        Cluster #{personaIdx + 1 < 10 ? `0${personaIdx + 1}` : personaIdx + 1}
-                      </h3>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                        {personaDef.label} ({personaDef.category.replace('_', ' ')})
-                      </div>
-                    </div>
-                    <span className="badge badge-teal" style={{ fontSize: 'var(--text-sm)' }}>
-                      {clusterId}
-                    </span>
-                  </div>
-
-                  {/* Persona Switcher Buttons #1 - #5 */}
-                  <div style={{ display: 'flex', gap: '4px', marginBottom: '10px' }}>
-                    {PERSONA_DEFINITIONS.map((def, idx) => (
-                      <button
-                        key={def.id}
-                        type="button"
-                        onClick={() => handleSelectAnonymousDot(idx)}
-                        style={{
-                          flex: 1,
-                          padding: '5px 2px',
-                          fontSize: '11px',
-                          borderRadius: '4px',
-                          border: selection.dotIndex === idx ? '1px solid #38bdf8' : '1px solid #334155',
-                          background: selection.dotIndex === idx ? 'rgba(2, 132, 199, 0.35)' : 'rgba(30, 41, 59, 0.6)',
-                          color: selection.dotIndex === idx ? '#38bdf8' : '#94a3b8',
-                          cursor: 'pointer',
-                          fontWeight: selection.dotIndex === idx ? 700 : 500,
-                        }}
-                      >
-                        #{idx + 1}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="metric-row">
-                    <span className="metric-label">Detection Type</span>
-                    <span className="metric-value">Anonymous 3D Point Cluster</span>
-                  </div>
-
-                  <div className="metric-row">
-                    <span className="metric-label">Coordinates</span>
-                    <span className="metric-value" style={{ fontFamily: 'monospace' }}>
-                      [{uiRuntimePos[0].toFixed(2)}, {uiRuntimePos[2].toFixed(2)}]
-                    </span>
-                  </div>
-
-                  <div className="metric-row">
-                    <span className="metric-label">Approx. Location</span>
-                    <span className="metric-value">{selection.approxLocation}</span>
-                  </div>
-
-                  <div className="metric-row">
-                    <span className="metric-label">Live Sensor Envelope</span>
-                    <span className={`metric-value ${liveCoverage.detected ? 'ok' : 'warn'}`}>
-                      {liveCoverage.detected
-                        ? `Covered by Pole ${liveCoverage.primarySensor?.sensorId} (${liveCoverage.distanceToNearestSensorM.toFixed(1)}m)`
-                        : `Coverage Gap · Nearest: ${liveCoverage.nearestPoleId || 'none'} (${liveCoverage.distanceToNearestSensorM.toFixed(1)}m)`}
-                    </span>
-                  </div>
-
-                  <div className="metric-row">
-                    <span className="metric-label">3D Cluster Height</span>
-                    <span className={`metric-value ${isCollapsed ? 'warn' : 'ok'}`}>
-                      {isCollapsed ? '0.34m (Collapsed Ground Pose)' : '1.72m (Standing Upright)'}
-                    </span>
-                  </div>
-
-                  <div className="metric-row">
-                    <span className="metric-label">Motion Status</span>
-                    <span className={`metric-value ${isCollapsed ? 'warn' : 'ok'}`}>
-                      {isCollapsed
-                        ? `Unusual Movement (Motionless ${runtimePersona?.stationaryDurationSec || 0}s)`
-                        : isLookalikeStop && personaIdx === 0
-                        ? 'Stopped Upright (No Alert)'
-                        : `Active: ${runtimePersona?.currentAction ? runtimePersona.currentAction.replace('_', ' ') : 'walking'}`}
-                    </span>
-                  </div>
-
-                  {/* Isolated Cluster Detection Result */}
-                  <div className="metric-row">
-                    <span className="metric-label">Cluster Evaluation</span>
-                    <span className={`metric-value ${clusterObs ? (clusterObs.detected ? 'warn' : 'muted') : 'muted'}`} style={{ fontSize: '11px', textAlign: 'right' }}>
-                      {clusterObs
-                        ? clusterObs.detected
-                          ? `⚠️ Fall Detected (${clusterObs.primarySensorId})`
-                          : `⚠️ Coverage Gap (${clusterObs.nearestPoleId})`
-                        : 'No detection evaluation yet'}
-                    </span>
-                  </div>
-
-                  {clusterObs && (
-                    <div style={{ fontSize: '10px', color: '#64748b', textAlign: 'right', marginTop: '-4px', marginBottom: '6px' }}>
-                      Last evaluated at {clusterObs.timeStr}
-                    </div>
-                  )}
-
-                  <div className="metric-row">
-                    <span className="metric-label">Identity Data</span>
-                    <span className="metric-value" style={{ color: 'var(--text-muted)' }}>
-                      None (Protected by design)
-                    </span>
-                  </div>
-
-                  <div className="notice notice-info mt-2" style={{ fontSize: 'var(--text-sm)' }}>
-                    <strong>LiDAR Privacy Safeguard:</strong> Anonymous 3D bounding-box geometry only. No facial recognition, identity, or continuous movement history is stored.
-                  </div>
-                </>
-              );
-            })()}
+            {selection.type === 'person' && (
+              <VisitorControlCenter
+                personas={personasForControlCenter}
+                selectedPersonaId={selectedPersonaId}
+                onSelectPersona={(pId) => {
+                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
+                  if (idx >= 0) handleSelectAnonymousDot(idx);
+                }}
+                onTriggerAction={(pId, actId) => {
+                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
+                  if (idx >= 0) {
+                    const res = dispatchPersonaAction(idx, actId as PersonaActionType);
+                    if (!res.success) {
+                      setLastFeedbackMessage(res.reason);
+                    } else {
+                      setLastFeedbackMessage(`Action "${actId}" activated for Visitor #${idx + 1}`);
+                      if (res.observation) {
+                        const obs = res.observation;
+                        setLastDetectionByPersonaId((prev) => ({
+                          ...prev,
+                          [pId]: {
+                            personaId: pId,
+                            clusterId: `LIDAR-P-0${idx + 1}`,
+                            verdict: obs.detected ? 'Fall Detected (Alert Triggered)' : 'Coverage Gap (Out of Range / Occluded)',
+                            sensorId: null,
+                            poleId: null,
+                            distanceM: null,
+                            timestampIso: new Date().toLocaleTimeString(),
+                          },
+                        }));
+                      }
+                    }
+                  }
+                }}
+                onRecoverPersona={(pId) => {
+                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
+                  if (idx >= 0) {
+                    recoverPersona(idx);
+                    setLastFeedbackMessage(`Visitor #${idx + 1} recovered to normal patrol loop`);
+                  }
+                }}
+                backgroundActivityEnabled={backgroundActivityEnabled}
+                onToggleBackgroundActivity={toggleBackgroundActivity}
+                operationalLidarNodes={operationalLidarNodes}
+                lastDetectionByPersonaId={lastDetectionByPersonaId}
+                lastFeedbackMessage={lastFeedbackMessage}
+              />
+            )}
 
             {/* State 4: Guard Selected */}
             {selection.type === 'guard' && (

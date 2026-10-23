@@ -13,7 +13,6 @@ import AudioCoverage from './AudioCoverage';
 import LidarCoverageOverlay from './LidarCoverageOverlay';
 import AnonymousHumanoid from './AnonymousHumanoid';
 import GuardMarker from './GuardMarker';
-import PersonaCommandHUD from '../HUD/PersonaCommandHUD';
 import CameraAndGapOverlay from './CameraAndGapOverlay';
 import { POLES, PEOPLE_PATHS } from '../../data/parkData';
 import type { LightingMap, DispatchedGuardState, CameraPose, CameraViewMode } from '../../types';
@@ -762,7 +761,6 @@ export default function Scene({
           onFinishGuardReturn={onFinishGuardReturn}
         />
       </Canvas>
-      <PersonaCommandHUD selectedIndex={selectedDotIndex} onSelectPersona={onSelectAnonymousDot} />
     </>
   );
 }
