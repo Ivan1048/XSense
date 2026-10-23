@@ -340,15 +340,19 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Operational sensor coverage check: outside 12m radius = coverage gap!
-      if (!nearestPole || minDistance > OPERATIONAL_RADIUS_M) {
+      // Audio simulation retains its legacy pole-radius gate.
+      // Fall observations are gated exclusively by the authoritative LiDAR
+      // range/FOV/LOS engine below, not by this legacy smart-pole radius.
+      if (obs.type === 'audio_distress' && (!nearestPole || minDistance > OPERATIONAL_RADIUS_M)) {
         return {
           detected: false,
           reason: `Coverage Gap: Location [${x.toFixed(1)}, ${z.toFixed(1)}] is outside active sensor radius (${minDistance.toFixed(1)}m > ${OPERATIONAL_RADIUS_M}m to nearest pole ${nearestPole?.id || 'none'}).`,
         };
       }
 
-      const pole = nearestPole;
+      // The fall branch determines its own valid LiDAR-mounted pole.
+      // Acoustic observations require the checked nearest online pole.
+      const pole = nearestPole ?? POLES[0];
       const now = new Date().toLocaleTimeString();
       const nowEpoch = Date.now();
       const suffix = nowEpoch.toString().slice(-4);
@@ -426,7 +430,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const pole = POLES.find((p) => p.id === primary.poleId) || nearestPole || POLES[3];
         setFallPoleId(primary.poleId);
         setLighting((prev) => ({ ...prev, [primary.poleId]: 100 }));
-        setLightingNote(lightNote);
+        const detectedLightNote = isRouteBlocked
+          ? 'Nearby lights on — route not verified.'
+          : `Nearby Lights On — Local pole ${primary.poleId} boosted to 100%.`;
+        setLightingNote(detectedLightNote);
 
         const incId = `INC-${suffix}`;
         const sourceDev = evalResult.corroboratingSensors.length > 0
@@ -446,7 +453,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           reason: `SIMULATED: 3D cluster height collapsed from 1.72m to 0.34m near ${primary.poleId} (${primary.distanceM}m away). Reviewable without requiring sound.`,
           sourceMode: 'simulated',
           score: 0.86,
-          lightingResponseNote: lightNote,
+          lightingResponseNote: detectedLightNote,
           cameraContext:
             primary.poleId === 'AS-101'
               ? 'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
@@ -458,7 +465,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           lastUpdatedEpoch: nowEpoch,
           activityTrail: [
             { time: now, action: `Unusual movement anomaly verified by ${primary.sensorId} near ${primary.poleId}`, actor: 'LiDAR Pipeline' },
-            { time: now, action: lightNote, actor: 'Safety Lighting Response' },
+            { time: now, action: detectedLightNote, actor: 'Safety Lighting Response' },
           ],
         };
 
@@ -470,7 +477,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           {
             sourceDevice: sourceDev,
             sensorBasis: `Height: 0.34m | Drop speed: -1.42 m/s | Distance: ${primary.distanceM}m from ${primary.poleId}`,
-            lightingAction: lightNote,
+            lightingAction: detectedLightNote,
             cameraAvailability: newIncident.cameraContext,
           },
         );
