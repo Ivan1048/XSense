@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePark } from '../../context/ParkContext';
+import { recordLiveMicToWavBlob } from '../../utils/audioWavEncoder';
 import StatusLabel from '../StatusLabel';
 import EvidenceChart from './EvidenceChart';
 import {
@@ -50,18 +51,33 @@ function CaptureDetails({ entry }: { entry: Extract<Evidence, { kind: 'capture' 
 
 export default function DetectionInspector() {
   const snapshot = useSyncExternalStore(subscribeEvidence, getEvidenceSnapshot);
-  const { triggerRecordedAudio, simulationDiagnostics } = usePark();
+  const { triggerRecordedAudio, triggerLiveMic, simulationDiagnostics } = usePark();
   const navigate = useNavigate();
   const [visitorIndex, setVisitorIndex] = useState(0);
   const [sampleId, setSampleId] = useState('distress_scream_sample.wav');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [micBusy, setMicBusy] = useState(false);
+  const [micCountdown, setMicCountdown] = useState(0);
+  const [micError, setMicError] = useState('');
   const selected = snapshot.entries.find(entry => entry.id === snapshot.selectedId) ?? snapshot.entries[0];
   const analyze = async () => {
     setBusy(true); setError('');
     try { await triggerRecordedAudio(sampleId); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Audio analysis unavailable.'); }
     finally { setBusy(false); }
+  };
+  const analyzeLive = async () => {
+    setMicBusy(true); setMicError('');
+    try {
+      const blob = await recordLiveMicToWavBlob(3, setMicCountdown);
+      await triggerLiveMic(blob);
+    } catch (cause) {
+      setMicError(cause instanceof Error ? cause.message : 'Live microphone analysis unavailable.');
+    } finally {
+      setMicBusy(false);
+      setMicCountdown(0);
+    }
   };
   return <section className="system-section detection-inspector" aria-labelledby="detection-inspector-heading">
     <div className="system-header-row"><div><h2 id="detection-inspector-heading">Detection Inspector</h2><p className="system-explanation">Inspect test evidence without changing detection settings. Up to 12 results are kept in memory; refresh, Clear evidence, or Reset All removes them.</p></div><button className="btn btn-secondary" onClick={clearDetectionEvidence} disabled={snapshot.entries.length === 0}>Clear evidence</button></div>
@@ -74,6 +90,10 @@ export default function DetectionInspector() {
           <option value="distress_scream_sample.wav">Vocal distress / crying</option><option value="heavy_rain_thunder.wav">Heavy rain &amp; storm</option><option value="park_laughter_chatter.wav">Laughter &amp; voices</option><option value="ambient_park_quiet.wav">Night crickets &amp; wind</option>
         </select></label><button className="btn btn-secondary" disabled={busy} onClick={analyze}>{busy ? 'Analyzing…' : 'Analyze recorded clip'}</button></div>
         {error && <p role="alert" className="notice notice-warning">Audio analysis failed: {error}. Previous evidence remains available.</p>}
+      </div>
+      <div><h3>Test live microphone</h3><p className="system-explanation">Records 3 seconds in this browser and analyzes it with the same YAMNet test flow. Audio is not stored; a distress result may create a demo incident.</p>
+        <div className="evidence-controls"><button className="btn btn-secondary" disabled={busy || micBusy} onClick={analyzeLive}>{micBusy ? micCountdown > 0 ? `Recording… ${micCountdown}s` : 'Analyzing…' : 'Record 3-second live test'}</button></div>
+        {micError && <p role="alert" className="notice notice-warning">Live microphone test failed: {micError}</p>}
       </div>
     </div>
     <label className="evidence-result-select">Test result<select aria-label="Test result" value={selected?.id ?? ''} onChange={event => selectEvidence(event.target.value)} disabled={!selected}>
