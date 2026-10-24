@@ -5,7 +5,8 @@ import type {
   LidarEvaluationResult,
 } from '../types';
 
-const BASE = import.meta.env.VITE_API_URL || '/api';
+// import.meta.env is undefined when this module is bundled for the Node test runner.
+const BASE = import.meta.env?.VITE_API_URL || '/api';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {

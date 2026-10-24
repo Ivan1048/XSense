@@ -26,6 +26,25 @@ import {
 } from '../services/api';
 import { linkDemoFallIncident, stageDemoCollapse, subscribePersonaObservations, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
+import type { UnifiedCollapseEvaluationResult } from '../utils/lidarGeometry';
+import {
+  evaluateCameraCoverage,
+  type CameraCoverageResult,
+} from '../utils/cameraCoverage';
+import { personaAudioService } from '../services/personaAudioService';
+
+/**
+ * Outcome of the CCTV blind-spot demonstration. Both the LiDAR geometry result
+ * and the estimated CCTV coverage result are returned so the UI can show the
+ * comparison without re-deriving either.
+ */
+export interface ResidentialBlindSpotResult {
+  lidar: UnifiedCollapseEvaluationResult;
+  camera: CameraCoverageResult;
+  detected: boolean;
+  reason: string;
+  incidentId?: string;
+}
 
 export interface PersonaObservationRecord<T = LidarEvaluationResult> {
   clusterId: string;
@@ -138,6 +157,7 @@ interface ParkContextType {
 
   // Demo Scenarios
   triggerSilentFall: () => Promise<LidarEvaluationResult>;
+  triggerResidentialBlindSpotFall: () => ResidentialBlindSpotResult;
   triggerStandingStopLookalike: () => Promise<LidarEvaluationResult>;
   triggerScream: () => void;
   triggerCombined: () => Promise<void>;
@@ -502,6 +522,10 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? `${primary.sensorId} + ${evalResult.corroboratingSensors.map((c) => c.sensorId).join(', ')} · Mounted on ${primary.poleId}`
           : `${primary.sensorId} · Mounted on ${primary.poleId}`;
 
+        // Camera availability is derived from the estimated footprints, not from
+        // the nearest pole, so a LiDAR detection never implies a camera view.
+        const cameraCoverage = evaluateCameraCoverage(x, z);
+
         newIncident = {
           id: incId,
           createdAt: now,
@@ -516,12 +540,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sourceMode: 'simulated',
           score: 0.86,
           lightingResponseNote: detectedLightNote,
-          cameraContext:
-            primary.poleId === 'AS-101'
-              ? 'CAM-01 (North Gate CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
-              : primary.poleId === 'AS-105'
-              ? 'CAM-02 (East Exit CCTV) covers this zone — Inventory marker only; live stream not connected. On-site check required.'
-              : 'No camera view available in this zone. On-site check required.',
+          cameraContext: cameraCoverage.cameraContext,
           sensorBasis: `LiDAR cluster height drop: 1.72m → 0.34m | Distance: ${primary.distanceM}m from ${primary.poleId} (${primary.sensorId}) | LOS: Verified Clear`,
           occurrenceCount: 1,
           lastUpdatedEpoch: nowEpoch,
@@ -911,6 +930,39 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return evalResult;
   }, [addEvent, blockedRouteZone, offlinePoleId, upsertSensorIncident]);
+
+  // 1c. CCTV Blind Spot — Residential Edge Fall Detected by Operational LiDAR.
+  // Shows a location inside an operational LiDAR envelope but outside every
+  // *estimated* CCTV footprint. No hardware is added and no feed is invented:
+  // the camera line comes from the same estimate drawn on the map.
+  const triggerResidentialBlindSpotFall = useCallback((): ResidentialBlindSpotResult => {
+    setIsLookalikeStop(false);
+
+    // Documented demonstration point on the residential east lake bank.
+    const demoPos: [number, number, number] = [9.5, 0.34, -3.0];
+    stageDemoCollapse(2, demoPos);
+    setSelectedPoleId('AS-103');
+
+    const lidar = evaluateCollapseAgainstAllLidars(demoPos, offlinePoleId, blockedRouteZone);
+    const camera = evaluateCameraCoverage(demoPos[0], demoPos[2]);
+
+    // Reuse the standard persona observation pipeline so incident creation,
+    // lighting response, deduplication and coverage-gap diagnostics stay shared.
+    const observation = reportPersonaObservation({
+      type: 'fall',
+      personaIndex: 2,
+      worldPos: [demoPos[0], demoPos[2]],
+      action: 'collapse',
+    });
+
+    return {
+      lidar,
+      camera,
+      detected: observation.detected,
+      reason: observation.reason,
+      incidentId: observation.incidentId,
+    };
+  }, [blockedRouteZone, offlinePoleId, reportPersonaObservation]);
 
   // 2. Simulated Distress Scream (AS-101) — Strictly labeled 'simulated'
   const triggerScream = useCallback(() => {
@@ -1422,6 +1474,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleReset = useCallback(() => {
     clearDetectionEvidence();
     resetAllPersonas();
+    personaAudioService.stop();
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -2018,6 +2071,7 @@ export const ParkProvider: React.FC<{ children: React.ReactNode }> = ({ children
     events,
     addEvent,
     triggerSilentFall,
+    triggerResidentialBlindSpotFall,
     triggerStandingStopLookalike,
     triggerScream,
     triggerCombined,

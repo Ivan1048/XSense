@@ -393,6 +393,34 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
     return createCurvedRibbonGeometry(pts, 2.0, false, 0.06);
   }, []);
 
+  // Path E: Residential Edge Trail (East Exit gate → residences edge → east lake bank)
+  // Footway for the residential walking persona; 1.8m width to read as a secondary trail.
+  const residentialEdgeTrail = useMemo(() => {
+    const pts: [number, number][] = [
+      [16.5,  12.5],
+      [20.0,   9.5],
+      [20.0,   5.5],
+      [18.5,   1.5],
+      [15.0,  -1.5],
+      [12.0,  -2.5],
+      [ 9.5,  -3.0], // CCTV blind-spot demonstration point
+      [ 7.8,  -5.5],
+    ];
+    return createCurvedRibbonGeometry(pts, 1.8, false, 0.055);
+  }, []);
+
+  // Path F: Residential Return Trail (east lake bank → promenade at the East Exit gate)
+  const residentialReturnTrail = useMemo(() => {
+    const pts: [number, number][] = [
+      [12.0,   8.6],
+      [13.6,   7.8],
+      [16.4,   9.4],
+      [19.2,  12.4],
+      [20.0,  19.0],
+    ];
+    return createCurvedRibbonGeometry(pts, 1.8, false, 0.055);
+  }, []);
+
   // ── 4. Trees & Palms (Placed in open lawns with >2.5m path clearance) ──────
   const RAIN_TREES: { x: number; z: number; s: number }[] = [
     { x: -16, z: -17, s: 1.15 },
@@ -574,6 +602,22 @@ export default function ParkGeometry({ blockedRouteZone, isRaining = false, nigh
           color={nightMode ? '#ded8cc' : '#ede6db'}
           roughness={0.65}
           metalness={0.04}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <mesh geometry={residentialEdgeTrail} receiveShadow>
+        <meshStandardMaterial
+          color={nightMode ? '#d8d2c4' : '#e7dfd0'}
+          roughness={0.75}
+          metalness={0.03}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <mesh geometry={residentialReturnTrail} receiveShadow>
+        <meshStandardMaterial
+          color={nightMode ? '#d8d2c4' : '#e7dfd0'}
+          roughness={0.75}
+          metalness={0.03}
           side={THREE.DoubleSide}
         />
       </mesh>

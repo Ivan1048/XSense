@@ -144,6 +144,7 @@ Built using **Three.js**, **React Three Fiber (R3F)**, and **Drei**, the 3D view
   - Interactive HTML nameplates with live status indicators.
   - **Acoustic Pulse Waves:** Concentric expanding ring geometry that pulses outward when acoustic distress is detected at that pole.
 - **Anonymous Movement Dots (`AnonymousDot.tsx`):** Simulated pedestrian markers that traverse circular path trajectories. Markers display **zero facial geometry, names, or persistent identities**. During fall simulations, the marker stops motion and displays an amber alert halo.
+- **CCTV Inventory (`CameraAndGapOverlay.tsx`):** Camera mounts, aim direction and an **estimated** ground footprint derived from the documented mount/aim estimate (4.2m mount, 12m range, 60° horizontal field of view). The same estimate drives `utils/cameraCoverage.ts`, so the map and the incident camera line cannot disagree. A drawn footprint is not a live feed, does not prove identification or fall detection, and must not be described as verified coverage.
 
 ---
 
@@ -229,6 +230,10 @@ stateDiagram-v2
 | **Unsafe Route** | Pathway obstruction on Central Path | `coverage_warning` | **Coverage Warning** (`SIMULATED`) | Deploy 3D barrier mesh; offer an alternative only if explicitly verified; otherwise no route guidance. |
 | **Benign Rain / Noise** | Ambient precipitation acoustics | `normal` | **Normal / Info** (`SIMULATED`) | Telemetry log only. **No emergency incident generated.** |
 | **Resident SOS** | Web portal emergency trigger | `urgent` | **High Priority** (`SIMULATED`) | Immediate urgent alert; skips AI validation gate. |
+
+### Persona sound cues (demonstration playback)
+
+Operator-triggered persona actions (call for help, whistle, child crying, laughing, talking) play one audible cue at a time through a single frontend service (`personaAudioService`). Recorded cues use the ESC-50 samples served by `GET /api/audio/files/{id}`; the whistle is a clearly labelled synthesized tone because no recording exists. Playback is presentation only: it creates no incident, runs no YAMNet inference, and never marks an acoustic sensor as having heard anything. Mute and volume are local operator preferences, and a playback failure is reported in the HUD instead of failing silently.
 
 ---
 

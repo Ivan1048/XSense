@@ -6,7 +6,7 @@ export interface PersonaDefinition {
   id: PersonaId;
   index: number;
   label: string;
-  category: 'jogger' | 'senior' | 'fitness' | 'parent_child' | 'dog_walker';
+  category: 'jogger' | 'senior' | 'fitness' | 'walker' | 'parent_child' | 'dog_walker';
   pathIndex: number;
   baseSpeed: number;
   description: string;
@@ -78,30 +78,31 @@ export const PERSONA_DEFINITIONS: PersonaDefinition[] = [
   {
     id: 'persona_2',
     index: 2,
-    label: 'Fitness Enthusiast',
-    category: 'fitness',
+    label: 'Residential Walker',
+    category: 'walker',
     pathIndex: 2,
-    baseSpeed: 0.34,
-    description: 'Recreational exerciser along the East Exit Promenade doing aerobic training.',
-    postureDescription: 'Upright athletic stance, dual wristbands, periodic calisthenics.',
+    baseSpeed: 0.24,
+    description:
+      'Resident walking from the residential edge through the East Exit gate and along the east lake bank.',
+    postureDescription: 'Relaxed upright walk, hands free, unhurried cadence.',
     supportedActions: [
-      'jog',
-      'sprint',
-      'jumping_jacks',
-      'yoga',
-      'crouch',
-      'tie_shoelaces',
+      'walk',
+      'bench_rest',
+      'pause_tree',
       'check_phone',
+      'talking',
+      'whistling',
+      'crouch',
       'collapse',
       'call_help',
     ],
     autonomousActivities: [
-      { action: 'jumping_jacks', durationSec: 9, weight: 3 },
-      { action: 'yoga', durationSec: 10, weight: 3 },
-      { action: 'crouch', durationSec: 7, weight: 2 },
-      { action: 'sprint', durationSec: 7, weight: 3 },
+      { action: 'bench_rest', durationSec: 12, weight: 4 },
+      { action: 'pause_tree', durationSec: 10, weight: 3 },
+      { action: 'check_phone', durationSec: 6, weight: 2 },
+      { action: 'whistling', durationSec: 8, weight: 2 },
     ],
-    accessoryType: 'wristband',
+    accessoryType: 'visor',
   },
   {
     id: 'persona_3',

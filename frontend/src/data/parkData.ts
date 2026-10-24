@@ -144,26 +144,40 @@ export const PEOPLE_PATHS = [
       [ 0.6,  -2.2], // Lakeside bypass south of AS-103 (dist to AS-103 = 3.22m)
     ] as [number, number][],
   },
-  // Dot 2: East Exit Promenade (near AS-105 at [14, 11] with safe promenade bypass)
+  // Dot 2: Residential Edge Walk (residences → East Exit gate → residential edge
+  // trail → east lake bank → footbridge → central junction → East Exit connector → back).
+  // Validated on the closed spline: 2.54m min pole clearance (AS-103), no lake
+  // overlap outside the footbridge span, ~73m loop. Passes the CCTV blind-spot
+  // demonstration point [9.5, -3.0].
   {
-    x: 12.0,
-    z: 9.5,
+    x: 18.0,
+    z: 14.0,
     radius: 1.8,
-    speed: 0.38,
-    offset: 0.6,
+    speed: 0.24,
+    offset: 0.0,
     waypoints: [
-      [ 2.6,   2.6], // Turnaround near Central Junction (dist to AS-103 = 2.26m)
+      [16.5,  12.5], // East Exit gate / residential approach
+      [20.0,   9.5], // Residential edge walk
+      [20.0,   5.5],
+      [18.5,   1.5],
+      [15.0,  -1.5],
+      [12.0,  -2.5],
+      [ 9.5,  -3.0], // CCTV blind spot · east lake bank (LID-001 detects here)
+      [ 7.8,  -5.5], // East lake path
+      [ 5.8,  -4.8], // Footbridge East End
+      [ 3.6,  -4.8], // Footbridge Mid
+      [ 1.4,  -4.8], // Footbridge West End
+      [ 1.6,  -3.0],
+      [ 3.0,  -1.0],
+      [ 3.8,   1.4],
+      [ 5.0,   3.4], // Central junction approach (dist to AS-103 [1,1] = 4.66m)
       [ 5.5,   4.2],
       [ 9.5,   7.0],
       [12.0,   8.6], // Promenade safe corridor south of AS-105 (dist to [14,11] = 3.12m)
-      [14.2,   8.6], // Promenade safe corridor south of AS-105 (dist to [14,11] = 2.41m)
-      [16.2,   8.8], // East gate approach
-      [16.8,  10.5], // East turnaround loop
-      [16.0,   8.8],
-      [14.2,   8.6],
-      [12.0,   8.6],
-      [ 9.5,   7.0],
-      [ 5.5,   4.2],
+      [13.6,   7.8],
+      [16.4,   9.4], // Residential return trail
+      [19.2,  12.4],
+      [20.0,  19.0], // Rejoins the promenade back to the East Exit gate
     ] as [number, number][],
   },
   // Dot 3: North Entrance Connector (AS-101 to Lakeside corridor)

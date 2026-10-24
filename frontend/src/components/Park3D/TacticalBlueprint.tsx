@@ -306,6 +306,13 @@ export default function TacticalBlueprint({
       ],
       // East spur
       [[ 1.0, 1.0], [ 5.0, 3.5], [ 9.5, 7.0], [14.0, 11.0], [16.5, 12.5]],
+      // Residential edge trail (East Exit gate → east lake bank)
+      [
+        [16.5, 12.5], [20.0, 9.5], [20.0, 5.5], [18.5, 1.5], [15.0, -1.5],
+        [12.0, -2.5], [ 9.5, -3.0], [ 7.8, -5.5]
+      ],
+      // Residential return trail (east bank → promenade at the East Exit gate)
+      [[12.0, 8.6], [13.6, 7.8], [16.4, 9.4], [19.2, 12.4], [20.0, 19.0]],
     ];
 
     const vertices: number[] = [];

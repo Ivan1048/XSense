@@ -15,6 +15,8 @@ import { getGlobalPersonaStates, usePersonaStateMachine } from '../hooks/usePers
 import type { PersonaActionType } from '../types/persona';
 import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 import { usePark } from '../context/ParkContext';
+import type { ResidentialBlindSpotResult } from '../context/ParkContext';
+import { NO_CAMERA_VIEW_MESSAGE } from '../utils/cameraCoverage';
 import { getAudioSampleFileUrl } from '../services/api';
 import { recordLiveMicToWavBlob } from '../utils/audioWavEncoder';
 import { alertFocusKey, nextFocusAlert } from '../utils/alertFocus';
@@ -168,6 +170,7 @@ export default function ParkOverview() {
     events,
     incidents,
     triggerSilentFall,
+    triggerResidentialBlindSpotFall,
     triggerStandingStopLookalike,
     triggerScream,
     triggerCombined,
@@ -194,6 +197,7 @@ export default function ParkOverview() {
   const [isRecordingMic, setIsRecordingMic] = useState<boolean>(false);
   const [micCountdown, setMicCountdown] = useState<number>(3);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [blindSpotResult, setBlindSpotResult] = useState<ResidentialBlindSpotResult | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [sectorFlyTrigger, setSectorFlyTrigger] = useState<number>(0);
   const [autoFocusAlert, setAutoFocusAlert] = useState(false);
@@ -1523,6 +1527,7 @@ export default function ParkOverview() {
                 onClick={() => {
                   handleReset();
                   clearLatestResults();
+                  setBlindSpotResult(null);
                   setStatusBanner(null);
                   setErrorBanner(null);
                 }}
@@ -1647,6 +1652,117 @@ export default function ParkOverview() {
                   <span>4. Separate Zones Test (AS-101 vs AS-104)</span>
                   <span className="scenario-pill pill-cov">2 Separate Cases</span>
                 </button>
+
+                <button
+                  id="demo-cctv-blind-spot-btn"
+                  className="scenario-btn"
+                  onClick={() => {
+                    const res = triggerResidentialBlindSpotFall();
+                    setBlindSpotResult(res);
+                    setSelection({
+                      type: 'person',
+                      dotIndex: 2,
+                      approxLocation: 'Sector D · East Lake Bank (Residential Route)',
+                      stationary: true,
+                    });
+                    const sensor = res.lidar.primarySensor;
+                    setStatusBanner(
+                      res.detected && sensor
+                        ? `CCTV Blind Spot: ${sensor.sensorId} detected the fall at ${sensor.distanceM}m. ${
+                            res.camera.covered
+                              ? `Estimated CCTV coverage from ${res.camera.coveredByCameraId}; no feed connected.`
+                              : `Estimated CCTV coverage: none — nearest ${res.camera.nearestCameraId} is ${res.camera.nearestDistanceM}m away and ${res.camera.nearestOffAxisDeg}° off its aim line. ${NO_CAMERA_VIEW_MESSAGE}`
+                          }`
+                        : `Fall not detected by operational LiDAR — ${res.reason}`,
+                    );
+                  }}
+                >
+                  <span>5. CCTV Blind Spot — Residential East Lake Bank</span>
+                  <span className="scenario-pill pill-review">LiDAR Only</span>
+                </button>
+
+                {blindSpotResult && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px 12px',
+                      background: 'rgba(15, 23, 42, 0.65)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      borderRadius: '8px',
+                      fontSize: 'var(--text-sm)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <strong style={{ color: 'var(--text-primary)' }}>
+                        CCTV Blind Spot — East Lake Bank
+                      </strong>
+                      <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
+                        SIMULATED
+                      </span>
+                    </div>
+
+                    <div className="metric-row">
+                      <span className="metric-label">Operational LiDAR</span>
+                      <span className="metric-value ok">
+                        {blindSpotResult.detected && blindSpotResult.lidar.primarySensor
+                          ? `Detected by ${blindSpotResult.lidar.primarySensor.sensorId} at ${blindSpotResult.lidar.primarySensor.distanceM}m (${blindSpotResult.lidar.primarySensor.checks.lineOfSight.passed ? 'clear line of sight' : 'obstructed'})`
+                          : 'Not detected'}
+                      </span>
+                    </div>
+
+                    <div className="metric-row">
+                      <span className="metric-label">Estimated CCTV Coverage</span>
+                      <span className={`metric-value ${blindSpotResult.camera.covered ? 'ok' : 'warn'}`}>
+                        {blindSpotResult.camera.covered
+                          ? `Yes — ${blindSpotResult.camera.coveredByCameraId} (estimate)`
+                          : 'None'}
+                      </span>
+                    </div>
+
+                    {!blindSpotResult.camera.covered && blindSpotResult.camera.nearestCameraId && (
+                      <div className="metric-row">
+                        <span className="metric-label">Nearest Camera</span>
+                        <span className="metric-value">
+                          {blindSpotResult.camera.nearestCameraId} · {blindSpotResult.camera.nearestDistanceM}m
+                          away · {blindSpotResult.camera.nearestOffAxisDeg}° off its aim line
+                        </span>
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        background: blindSpotResult.camera.covered
+                          ? 'rgba(6, 78, 59, 0.35)'
+                          : 'rgba(120, 53, 15, 0.35)',
+                        border: `1px solid ${blindSpotResult.camera.covered ? '#059669' : '#d97706'}`,
+                        color: blindSpotResult.camera.covered ? '#a7f3d0' : '#fde68a',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {blindSpotResult.camera.covered
+                        ? blindSpotResult.camera.cameraContext
+                        : NO_CAMERA_VIEW_MESSAGE}
+                    </div>
+
+                    <div style={{ marginTop: '6px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                      {blindSpotResult.camera.explanation}
+                    </div>
+                    <div style={{ marginTop: '4px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+                      Footprints are mapped estimates from mount and aim — not a site survey, not a live
+                      feed, and not evidence that a person can be identified.
+                    </div>
+                  </div>
+                )}
 
                 {latestLidarEval && (
                   <div
