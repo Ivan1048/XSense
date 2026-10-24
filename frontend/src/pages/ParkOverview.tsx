@@ -1,57 +1,34 @@
 import CaptureStatus from '../components/System/CaptureStatus';
 // Park Overview — default guard console view.
 // Desktop layout: 3D viewer (left ~65%) + sidebar (right ~35%).
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Scene from '../components/Park3D/Scene';
 import { CCTV_CAMERAS } from '../components/Park3D/CameraAndGapOverlay';
 import StatusLabel from '../components/StatusLabel';
-import AlertCard from '../components/AlertCard';
 import { PLANNED_LIDARS, LIDAR_PLAN_NOTE } from '../data/lidarPlan';
 import { POLES } from '../data/parkData';
 import { OPERATIONAL_LIDARS } from '../data/lidarData';
 import { PERSONA_DEFINITIONS } from '../data/personaData';
 import { getGlobalPersonaStates, usePersonaStateMachine } from '../hooks/usePersonaStateMachine';
 import type { PersonaActionType } from '../types/persona';
-import { evaluateCollapseAgainstAllLidars } from '../utils/lidarGeometry';
 import { usePark } from '../context/ParkContext';
 import type { ResidentialBlindSpotResult } from '../context/ParkContext';
 import { NO_CAMERA_VIEW_MESSAGE } from '../utils/cameraCoverage';
-import { getAudioSampleFileUrl } from '../services/api';
-import { recordLiveMicToWavBlob } from '../utils/audioWavEncoder';
 import { alertFocusKey, nextFocusAlert } from '../utils/alertFocus';
-import VisitorControlCenter, { type VisitorDetectionRecord } from '../components/Sidebar/VisitorControlCenter';
+import { formatPersonaState } from '../utils/personaStateLabels';
+import PersonDetailsCard, {
+  type VisitorDetectionRecord,
+} from '../components/Sidebar/PersonDetailsCard';
 
-const BENCHMARK_SAMPLES = [
-  {
-    id: 'distress_scream_sample.wav',
-    title: 'Vocal Distress / Crying',
-    desc: 'Real vocal distress recording (16kHz WAV)',
-    badgeClass: 'pill-review',
-    badgeText: 'Distress',
-  },
-  {
-    id: 'heavy_rain_thunder.wav',
-    title: 'Heavy Rain & Storm',
-    desc: 'Environmental storm & rain pattering (16kHz WAV)',
-    badgeClass: 'pill-norm',
-    badgeText: 'Benign',
-  },
-  {
-    id: 'park_laughter_chatter.wav',
-    title: 'Park Laughter & Voices',
-    desc: 'Social laughter & voices lookalike (16kHz WAV)',
-    badgeClass: 'pill-norm',
-    badgeText: 'Benign',
-  },
-  {
-    id: 'ambient_park_quiet.wav',
-    title: 'Night Crickets & Wind',
-    desc: 'Quiet evening park baseline (16kHz WAV)',
-    badgeClass: 'pill-cov',
-    badgeText: 'Baseline',
-  },
-];
+const QUICK_ACTION_LABELS: Record<string, string> = {
+  pause_tree: 'Stop upright',
+  crouch: 'Crouch',
+  collapse: 'Collapse selected visitor here',
+  call_help: 'Call for Help',
+};
+
+const QUICK_ACTION_IDS = ['pause_tree', 'crouch', 'collapse', 'call_help'];
 
 function SummaryStats({
   needsAttention,
@@ -105,7 +82,7 @@ function sectorForAlert(poleId: string) {
   });
 }
 
-type DemoTab = 'lidar' | 'sound' | 'env';
+type SidebarTab = 'details' | 'demo';
 
 export default function ParkOverview() {
   const location = useLocation();
@@ -147,11 +124,7 @@ export default function ParkOverview() {
     setShowLidarCoverage,
     selectedLidarId,
     setSelectedLidarId,
-    simulationDiagnostics,
-    clearSimulationDiagnostics,
     observationsByCluster,
-    showLidarPlan,
-    setShowLidarPlan,
     selectedPlannedLidar,
     setSelectedPlannedLidar,
     cameraPose,
@@ -164,19 +137,15 @@ export default function ParkOverview() {
     setSelectedSectorId,
     overviewSelection: selection,
     setOverviewSelection: setSelection,
-    latestAudioInference,
-    latestLidarEval,
     clearLatestResults,
-    events,
     incidents,
+    setSelectedIncidentId,
     triggerSilentFall,
     triggerResidentialBlindSpotFall,
     triggerStandingStopLookalike,
     triggerScream,
     triggerCombined,
     triggerUnrelatedSignals,
-    triggerRecordedAudio,
-    triggerLiveMic,
     triggerBenignRain,
     triggerDark,
     triggerUnsafeRoute,
@@ -191,14 +160,9 @@ export default function ParkOverview() {
     activeIncidentsCount,
   } = usePark();
 
-  const [activeTab, setActiveTab] = useState<DemoTab>('lidar');
-  const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
-  const [analyzingSampleId, setAnalyzingSampleId] = useState<string | null>(null);
-  const [isRecordingMic, setIsRecordingMic] = useState<boolean>(false);
-  const [micCountdown, setMicCountdown] = useState<number>(3);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('details');
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
   const [blindSpotResult, setBlindSpotResult] = useState<ResidentialBlindSpotResult | null>(null);
-  const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [sectorFlyTrigger, setSectorFlyTrigger] = useState<number>(0);
   const [autoFocusAlert, setAutoFocusAlert] = useState(false);
   const previousAlertsRef = useRef(new Map<string, string>());
@@ -316,6 +280,8 @@ export default function ParkOverview() {
       const isCollapsed = runtime.fsmState === 'collapsed';
       const isSelected = selection.type === 'person' && selection.dotIndex === idx;
       const pos = isSelected ? uiRuntimePos : runtime.worldPosition;
+      const actionLabel =
+        ACTION_LABELS[runtime.currentAction || 'walk']?.label || runtime.currentAction || 'Walking';
 
       return {
         id: def.id,
@@ -325,12 +291,12 @@ export default function ParkOverview() {
         clusterId: `LIDAR-P-0${idx + 1}`,
         sectorLabel: sectorLabels[idx] || 'Park Grounds',
         state: runtime.fsmState,
-        activeAction: runtime.currentAction || 'walk',
+        activeAction: actionLabel,
         position: pos,
         heightM: isCollapsed ? 0.34 : 1.72,
         motionStatus: isCollapsed
           ? `Motionless (${runtime.stationaryDurationSec || 0}s)`
-          : `Active (${runtime.currentAction || 'moving'})`,
+          : `Active (${actionLabel})`,
         supportedActions: def.supportedActions.map((act) => ({
           id: act,
           label: ACTION_LABELS[act]?.label || act,
@@ -379,107 +345,18 @@ export default function ParkOverview() {
     setSectorFlyTrigger((c) => c + 1);
   };
 
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (audioPlayerRef.current) {
-        audioPlayerRef.current.pause();
-        audioPlayerRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleTogglePlaySample = (sampleId: string) => {
-    setErrorBanner(null);
-    if (playingSampleId === sampleId && audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      audioPlayerRef.current = null;
-      setPlayingSampleId(null);
-      return;
-    }
-
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-      audioPlayerRef.current = null;
-    }
-
-    const url = getAudioSampleFileUrl(sampleId);
-    const audio = new Audio(url);
-    audioPlayerRef.current = audio;
-    setPlayingSampleId(sampleId);
-
-    audio.onended = () => {
-      setPlayingSampleId(null);
-      audioPlayerRef.current = null;
-    };
-    audio.onerror = () => {
-      setPlayingSampleId(null);
-      audioPlayerRef.current = null;
-      setErrorBanner('Could not play audio file. Ensure FastAPI backend is running on port 8000.');
-    };
-
-    audio.play().catch((err: unknown) => {
-      setPlayingSampleId(null);
-      const msg = err instanceof Error ? err.message : 'Playback failed';
-      setErrorBanner(`Audio playback error: ${msg}`);
-    });
-  };
-
-  const handleRunRecordedSample = async (sampleId: string) => {
-    setErrorBanner(null);
-    setAnalyzingSampleId(sampleId);
-    handleTogglePlaySample(sampleId);
-    try {
-      const inf = await triggerRecordedAudio(sampleId);
-      const distressPct = Math.round((inf.distress_score ?? 0) * 100);
-      const benignPct = Math.round((inf.benign_score ?? 0) * 100);
-      setStatusBanner(
-        `RECORDED SAMPLE (${inf.sample_id}): ${inf.plain_label} — Distress: ${distressPct}%, Benign: ${benignPct}%`,
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Backend connection error';
-      setErrorBanner(`YAMNet analysis error: ${msg}`);
-    } finally {
-      setAnalyzingSampleId(null);
-    }
-  };
-
-  const handleRecordLiveMic = async () => {
-    setErrorBanner(null);
-    setIsRecordingMic(true);
-    setMicCountdown(3);
-    try {
-      const wavBlob = await recordLiveMicToWavBlob(3, (secLeft) => {
-        setMicCountdown(secLeft);
-      });
-      setIsRecordingMic(false);
-      setAnalyzingSampleId('live_mic');
-      const inf = await triggerLiveMic(wavBlob);
-      const distressPct = Math.round((inf.distress_score ?? 0) * 100);
-      const benignPct = Math.round((inf.benign_score ?? 0) * 100);
-      setStatusBanner(
-        `LIVE MIC INPUT: ${inf.plain_label} — Distress: ${distressPct}%, Benign: ${benignPct}%`,
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Microphone capture failed';
-      setErrorBanner(`Live Mic Error: ${msg}`);
-    } finally {
-      setIsRecordingMic(false);
-      setAnalyzingSampleId(null);
-    }
-  };
-
   const handleSelectPole = (id: string) => {
     setSelectedPoleId(id);
     setSelection({ type: 'pole', poleId: id });
+    setSidebarTab('details');
   };
 
   const handleSelectCamera = (cameraId: string) => {
     setSelection({ type: 'camera', cameraId });
+    setSidebarTab('details');
   };
 
-  const handleSelectAnonymousDot = (dotIndex: number) => {
+  const handleSelectAnonymousDot = (dotIndex: number, openDetails = true) => {
     const locations = [
       'West Loop · Near Pole AS-104',
       'Lake Loop & Footbridge · Near Pole AS-102',
@@ -495,6 +372,7 @@ export default function ParkOverview() {
       approxLocation: locations[dotIndex] || 'Park Pathway',
       stationary: p?.fsmState === 'collapsed',
     });
+    if (openDetails) setSidebarTab('details');
   };
 
   const handleSelectGuard = (guardId: string) => {
@@ -502,6 +380,127 @@ export default function ParkOverview() {
       type: 'guard',
       guardId,
     });
+    setSidebarTab('details');
+  };
+
+  const handleTriggerPersonaAction = (personaId: string, actionId: string) => {
+    const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === personaId);
+    if (idx < 0) return;
+    const res = dispatchPersonaAction(idx, actionId as PersonaActionType);
+    if (!res.success) {
+      setLastFeedbackMessage(res.reason);
+      return;
+    }
+
+    const actionLabel = QUICK_ACTION_LABELS[actionId] || actionId.replace(/_/g, ' ');
+    const feedbackByAction: Record<string, string> = {
+      pause_tree: `Visitor #${idx + 1} stopped upright — no fall alert (simulated).`,
+      crouch: `Visitor #${idx + 1} crouched at the current position (simulated).`,
+      collapse: `Visitor #${idx + 1} collapsed at the current map position (simulated).`,
+      call_help: `Visitor #${idx + 1} is calling for help (simulated).`,
+    };
+    setLastFeedbackMessage(feedbackByAction[actionId] || `${actionLabel} applied to Visitor #${idx + 1}`);
+    if (res.observation) {
+      const obs = res.observation;
+      setLastDetectionByPersonaId((prev) => ({
+        ...prev,
+        [personaId]: {
+          personaId,
+          clusterId: `LIDAR-P-0${idx + 1}`,
+          verdict: obs.detected ? 'Fall Detected (Alert Triggered)' : 'Coverage Gap (Out of Range / Occluded)',
+          sensorId: null,
+          poleId: null,
+          distanceM: null,
+          timestampIso: new Date().toLocaleTimeString(),
+        },
+      }));
+    }
+  };
+
+  const handleRecoverPersona = (personaId: string) => {
+    const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === personaId);
+    if (idx < 0) return;
+    recoverPersona(idx);
+    setLastFeedbackMessage(`Visitor #${idx + 1} recovered to normal patrol loop`);
+  };
+
+  const runSilentFallScenario = async () => {
+    const res = await triggerSilentFall();
+    setSelection({
+      type: 'person',
+      dotIndex: 0,
+      approxLocation: 'West Loop · Near Pole AS-104',
+      stationary: true,
+    });
+    setStatusBanner(
+      `Silent Fall Detected: Height dropped 1.72m → 0.34m. AS-104 light boosted to 100% (${res.plain_label}).`,
+    );
+  };
+
+  const runCombinedScenario = async () => {
+    await triggerCombined();
+    setSelection({
+      type: 'person',
+      dotIndex: 0,
+      approxLocation: 'West Loop · Near Pole AS-104',
+      stationary: true,
+    });
+    setStatusBanner(
+      'Signals Agree (Urgent): Distress sound + LiDAR fall in West Loop within 15s window.',
+    );
+  };
+
+  const runResidentialBlindSpotScenario = () => {
+    const res = triggerResidentialBlindSpotFall();
+    setBlindSpotResult(res);
+    setSelection({
+      type: 'person',
+      dotIndex: 2,
+      approxLocation: 'Sector D · East Lake Bank (Residential Route)',
+      stationary: true,
+    });
+    const sensor = res.lidar.primarySensor;
+    setStatusBanner(
+      res.detected && sensor
+        ? `CCTV Blind Spot: ${sensor.sensorId} detected the fall at ${sensor.distanceM}m. ${
+            res.camera.covered
+              ? `Estimated CCTV coverage from ${res.camera.coveredByCameraId}; no feed connected.`
+              : `Estimated CCTV coverage: none — nearest ${res.camera.nearestCameraId} is ${res.camera.nearestDistanceM}m away and ${res.camera.nearestOffAxisDeg}° off its aim line. ${NO_CAMERA_VIEW_MESSAGE}`
+          }`
+        : `Fall not detected by operational LiDAR — ${res.reason}`,
+    );
+  };
+
+  const runStandingStopScenario = async () => {
+    const res = await triggerStandingStopLookalike();
+    setSelection({
+      type: 'person',
+      dotIndex: 0,
+      approxLocation: 'West Loop · Near Pole AS-104',
+      stationary: false,
+    });
+    setStatusBanner(`LiDAR Lookalike Test: ${res.plain_label} — Height stays 1.72m upright.`);
+  };
+
+  const runUnrelatedSignalsScenario = async () => {
+    await triggerUnrelatedSignals();
+    setStatusBanner(
+      'Different Zones: Scream at North Entrance (AS-101) + Fall at West Loop (AS-104) kept as 2 separate cases.',
+    );
+  };
+
+  const handleResetViewAndVisitors = () => {
+    setLocatedIncidentId(null);
+    resetView();
+    setStatusBanner('View and simulated visitor positions reset. Saved cases were not changed.');
+  };
+
+  const handleResetDemoSession = () => {
+    handleReset();
+    clearLatestResults();
+    setBlindSpotResult(null);
+    setLastFeedbackMessage(null);
+    setStatusBanner(null);
   };
 
   const selectedPole = POLES.find((p) => p.id === selectedPoleId);
@@ -514,6 +513,32 @@ export default function ParkOverview() {
   const isSelectedAlert = fallPoleId === selectedPoleId || acousticPoleId === selectedPoleId || sosPoleId === selectedPoleId;
   const isDark = !isSelectedOffline && selectedBrightness < 30;
   const selectedPlannedSensor = PLANNED_LIDARS.find((p) => p.id === selectedPlannedLidar);
+  const selectedPoleLidars = OPERATIONAL_LIDARS.filter((sensor) => sensor.mountPoleId === selectedPoleId);
+  const activeCases = useMemo(
+    () => incidents.filter((incident) => incident.status !== 'resolved' && incident.status !== 'false_alarm'),
+    [incidents],
+  );
+  const selectedPersona =
+    personasForControlCenter.find((persona) => persona.id === selectedPersonaId) || personasForControlCenter[0];
+
+  const selectedPoleCctvText =
+    selectedPole?.id === 'AS-101'
+      ? 'CAM-01 nearby · View unverified'
+      : selectedPole?.id === 'AS-105'
+      ? 'CAM-02 nearby · View unverified'
+      : selectedPole?.id === 'AS-102'
+      ? 'CAM-05 proposed · View unverified'
+      : selectedPole?.id === 'AS-104'
+      ? 'CAM-04 proposed · View unverified'
+      : 'No verified camera view';
+
+  const handleSidebarTabKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const nextTab: SidebarTab = sidebarTab === 'details' ? 'demo' : 'details';
+    setSidebarTab(nextTab);
+    document.getElementById(`sidebar-${nextTab}-tab`)?.focus();
+  };
 
   return (
     <div className="park-overview">
@@ -628,10 +653,10 @@ export default function ParkOverview() {
                 <button
                   id="reset-view-btn"
                   className="btn btn-sm btn-hud-reset"
-                  onClick={() => { setLocatedIncidentId(null); resetView(); }}
-                  title="Reset camera and simulated visitor actions; keep saved cases"
+                  onClick={handleResetViewAndVisitors}
+                  title="Reset the camera and simulated visitor actions. Saved cases stay open."
                 >
-                  ↺ Reset View
+                  ↺ Reset view &amp; visitors
                 </button>
               </div>
             </div>
@@ -832,192 +857,197 @@ export default function ParkOverview() {
         </div>
 
         {/* ── Right Sidebar ── */}
-        <aside
-          className="sidebar"
-          aria-label="Park details panel"
-          style={{
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            maxHeight: 'calc(100vh - 130px)',
-            minHeight: 0,
-            padding: '12px',
-            paddingTop: '12px',
-            boxSizing: 'border-box',
-            borderLeft: '1px solid rgba(148, 163, 184, 0.18)',
-          }}
-        >
-          {/* Active Incidents / Safety Lighting Notice in Sidebar */}
-          {(incidents.some((i) => i.status !== 'resolved' && i.status !== 'false_alarm') || lightingNote) && (
-            <div className="panel" style={{ borderLeft: '3px solid var(--urgent)', background: 'rgba(239, 68, 68, 0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <h2 className="panel-title" style={{ margin: 0, color: '#fca5a5' }}>
-                  Active Incidents ({activeIncidentsCount})
-                </h2>
-                <Link to="/incidents" className="btn btn-ghost btn-sm" style={{ fontSize: '12px', padding: '2px 8px' }}>
-                  Console ↗
-                </Link>
-              </div>
-              {lightingNote && (
-                <div style={{ fontSize: '13px', color: '#fde68a', marginBottom: '6px' }}>
-                  💡 <strong>Safety Lighting:</strong> {lightingNote}
-                </div>
-              )}
-              {incidents
-                .filter((i) => i.status !== 'resolved' && i.status !== 'false_alarm')
-                .slice(0, 2)
-                .map((inc) => (
-                  <div
-                    key={inc.id}
-                    style={{
-                      padding: '6px 8px',
-                      background: 'rgba(15, 23, 42, 0.65)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      borderRadius: '4px',
-                      marginBottom: '4px',
-                      fontSize: '13px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                      <span style={{ color: '#f8fafc' }}>{inc.displayType}</span>
-                      <span style={{ color: '#fca5a5' }}>{inc.poleId}</span>
+        <aside className="sidebar" aria-label="Park details panel">
+          {/* Active Cases stays above both tabs and excludes closed cases. */}
+          <section className="sidebar-cases" aria-labelledby="active-cases-heading">
+            <div className="sidebar-cases-header">
+              <h2 id="active-cases-heading">Active Cases ({activeCases.length})</h2>
+              <Link to="/incidents" className="sidebar-text-link">
+                Case history ↗
+              </Link>
+            </div>
+            {activeCases.length === 0 ? (
+              <p className="sidebar-cases-empty">
+                No open cases. Resolved and false-alarm cases remain available in{' '}
+                <Link to="/incidents">Incidents</Link>.
+              </p>
+            ) : (
+              <div className="active-case-list">
+                {activeCases.map((incident) => (
+                  <article key={incident.id} className={`active-case-item ${incident.priority}`}>
+                    <div className="active-case-top">
+                      <span className="active-case-type">{incident.displayType}</span>
+                      <StatusLabel level={incident.priority} />
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      {inc.reason}
+                    <span className="active-case-location">
+                      {incident.zoneName} · {incident.poleId}
+                    </span>
+                    <div className="active-case-footer">
+                      <span className="active-case-time">{incident.createdAt}</span>
+                      <Link
+                        to="/incidents"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedIncidentId(incident.id)}
+                      >
+                        Open case
+                      </Link>
                     </div>
-                  </div>
+                  </article>
                 ))}
-            </div>
-          )}
+              </div>
+            )}
+          </section>
 
-          {/* 1. Selected Area Panel */}
-          <div className="panel">
-            <h2 className="panel-title">
-              {selection.type === 'pole'
-                ? 'Active Infrastructure · 5 Smart Poles'
-                : selection.type === 'camera'
-                ? 'CCTV Inventory · 2 Cameras'
-                : selection.type === 'guard'
-                ? 'Security Patrol · Guard Unit'
-                : 'Anonymous Movement · LiDAR'}
-            </h2>
+          {/* Details | Demo tabs */}
+          <div
+            className="sidebar-tabs"
+            role="tablist"
+            aria-label="Park sidebar sections"
+            onKeyDown={handleSidebarTabKeyDown}
+          >
+            <button
+              type="button"
+              role="tab"
+              id="sidebar-details-tab"
+              aria-selected={sidebarTab === 'details'}
+              aria-controls="sidebar-details-panel"
+              tabIndex={sidebarTab === 'details' ? 0 : -1}
+              className={`sidebar-tab ${sidebarTab === 'details' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('details')}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="sidebar-demo-tab"
+              aria-selected={sidebarTab === 'demo'}
+              aria-controls="sidebar-demo-panel"
+              tabIndex={sidebarTab === 'demo' ? 0 : -1}
+              className={`sidebar-tab ${sidebarTab === 'demo' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('demo')}
+            >
+              Demo
+            </button>
+          </div>
 
-            <div className="entity-switch-row" role="tablist" aria-label="Selection entity">
-              <button
-                className={`entity-switch-btn ${selection.type === 'pole' ? 'active' : ''}`}
-                onClick={() => setSelection({ type: 'pole', poleId: selectedPoleId })}
-                role="tab"
-                aria-selected={selection.type === 'pole'}
-              >
-                Pole ({selectedPoleId})
-              </button>
-              <button
-                className={`entity-switch-btn ${selection.type === 'camera' ? 'active' : ''}`}
-                onClick={() => setSelection({ type: 'camera', cameraId: 'CAM-01' })}
-                role="tab"
-                aria-selected={selection.type === 'camera'}
-              >
-                📹 CCTV
-              </button>
-              <button
-                className={`entity-switch-btn ${selection.type === 'person' ? 'active' : ''}`}
-                onClick={() => handleSelectAnonymousDot(0)}
-                role="tab"
-                aria-selected={selection.type === 'person'}
-              >
-                Person (LiDAR)
-              </button>
-              {dispatchedGuards.length > 0 && (
-                <button
-                  className={`entity-switch-btn ${selection.type === 'guard' ? 'active' : ''}`}
-                  onClick={() => handleSelectGuard(dispatchedGuards[0].guardId)}
-                  role="tab"
-                  aria-selected={selection.type === 'guard'}
-                >
-                  Guard ({dispatchedGuards.length})
-                </button>
-              )}
-            </div>
+          <div
+            id="sidebar-details-panel"
+            role="tabpanel"
+            aria-labelledby="sidebar-details-tab"
+            className="sidebar-tab-panel"
+            hidden={sidebarTab !== 'details'}
+          >
+            {selection.type === 'pole' && selectedPole && (
+              <div className="details-card">
+                <div className="details-card-header">
+                  <div>
+                    <div className="details-eyebrow">Smart pole · Simulated telemetry</div>
+                    <h2 className="details-title">
+                      {selectedPole.id} · {selectedPole.name}
+                    </h2>
+                  </div>
+                  <StatusLabel level={isSelectedOffline ? 'offline' : 'online'} />
+                </div>
+                <p className="details-subtitle">
+                  Device position and sensor values are simulated. CCTV markers show estimated coverage,
+                  not a connected feed.
+                </p>
 
-            {/* State 1: Pole Selected */}
-            {selection.type === 'pole' && (
-              <>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Smart Infrastructure</span>
-                  <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
-                    Simulated Telemetry
-                  </span>
+                <div className="details-grid">
+                  <div className="details-field">
+                    <span className="details-label">Device ID</span>
+                    <span className="details-value">{selectedPole.id}</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Location</span>
+                    <span className="details-value">{selectedPole.name}</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Status</span>
+                    <span className={`details-value ${isSelectedOffline ? 'danger' : 'ok'}`}>
+                      {isSelectedOffline ? 'Offline in simulation' : 'Online in simulation'}
+                    </span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Estimated LiDAR coverage</span>
+                    <span className="details-value">
+                      {selectedPoleLidars.length > 0
+                        ? selectedPoleLidars
+                            .map(
+                              (sensor) =>
+                                `${sensor.id} · ${sensor.nominalRangeM}m · ${sensor.fovDeg}° field of view`,
+                            )
+                            .join(' · ')
+                        : 'No LiDAR mounted on this pole'}
+                    </span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">CCTV context</span>
+                    <span className="details-value">{selectedPoleCctvText}</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Lighting</span>
+                    <span
+                      className={`details-value ${
+                        isSelectedOffline || isDark ? 'warn' : 'ok'
+                      }`}
+                    >
+                      {isSelectedOffline
+                        ? 'Offline'
+                        : isDark
+                        ? 'Low Lighting Warning'
+                        : selectedBrightness >= 95 && isSelectedAlert
+                        ? 'Emergency lighting (100%)'
+                        : `Normal (${selectedBrightness}%)`}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="form-group mb-2">
-                  <label className="form-label" htmlFor="pole-select">
-                    Select Sensor Pole
-                  </label>
-                  <select
-                    id="pole-select"
-                    className="form-control"
-                    value={selectedPoleId}
-                    onChange={(e) => handleSelectPole(e.target.value)}
-                  >
-                    {POLES.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.id} · {p.name}
-                      </option>
+                <details className="sidebar-details">
+                  <summary>More details</summary>
+                  <div className="sidebar-details-body">
+                    <label className="form-group" htmlFor="pole-select">
+                      <span className="form-label">Choose a device</span>
+                      <select
+                        id="pole-select"
+                        className="form-control"
+                        value={selectedPoleId}
+                        onChange={(event) => handleSelectPole(event.target.value)}
+                      >
+                        {POLES.map((pole) => (
+                          <option key={pole.id} value={pole.id}>
+                            {pole.id} · {pole.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="metric-row">
+                      <span className="metric-label">World coordinates (X / Z)</span>
+                      <code className="metric-value">
+                        [{selectedPole.position[0]}, {selectedPole.position[1]}]
+                      </code>
+                    </div>
+                    {selectedPoleLidars.map((sensor) => (
+                      <div className="metric-row" key={sensor.id}>
+                        <span className="metric-label">{sensor.id} sensing basis</span>
+                        <span className="metric-value">
+                          {sensor.nominalRangeM}m nominal range · {sensor.fovDeg}° field of view ·{' '}
+                          {sensor.headingDeg}° direction ·{' '}
+                          {isSelectedOffline ? 'offline in simulation' : 'estimated, simulated'}
+                        </span>
+                      </div>
                     ))}
-                  </select>
-                </div>
-
-                {selectedPole && (
-                  <>
                     <div className="metric-row">
-                      <span className="metric-label">Area Zone</span>
-                      <span className="metric-value">{selectedPole.name}</span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Sensor Status</span>
-                      <StatusLabel level={isSelectedOffline ? 'offline' : 'online'} />
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Virtual Lamp</span>
-                      <span className={`metric-value ${isDark ? 'warn' : isSelectedOffline ? 'muted' : 'ok'}`}>
-                        {isSelectedOffline ? '— (offline)' : `${selectedBrightness}%`}
-                      </span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Lighting</span>
-                      <span className={`metric-value ${isDark || isSelectedOffline ? 'warn' : 'ok'}`}>
-                        {isSelectedOffline
-                          ? 'Offline'
-                          : isDark
-                          ? 'Low Lighting Warning'
-                          : selectedBrightness >= 95 && isSelectedAlert
-                          ? 'Nearby Lights On (100%)'
-                          : 'Normal (demo)'}
-                      </span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">CCTV Coverage</span>
-                      <span className="metric-value" style={{ fontSize: 'var(--text-sm)' }}>
-                        {selectedPole.id === 'AS-101'
-                          ? 'CAM-01 nearby · View unverified'
-                          : selectedPole.id === 'AS-105'
-                          ? 'CAM-02 nearby · View unverified'
-                          : selectedPole.id === 'AS-102'
-                          ? 'CAM-05 proposed · View unverified'
-                          : selectedPole.id === 'AS-104'
-                          ? 'CAM-04 proposed · View unverified'
-                          : 'No verified camera view'}
+                      <span className="metric-label">CCTV view basis</span>
+                      <span className="metric-value">
+                        Estimated footprint only · No live feed connected
                       </span>
                     </div>
 
                     {!isSelectedOffline && (
-                      <div className="form-group mt-2">
+                      <div className="form-group">
                         <label className="form-label" htmlFor="light-slider">
                           Adjust virtual lamp — {selectedBrightness}%
                         </label>
@@ -1027,1064 +1057,728 @@ export default function ParkOverview() {
                           min={0}
                           max={100}
                           value={selectedBrightness}
-                          onChange={(e) => setPoleLight(selectedPoleId, Number(e.target.value))}
+                          onChange={(event) => setPoleLight(selectedPoleId, Number(event.target.value))}
                           aria-label="Virtual light brightness"
                         />
                       </div>
                     )}
 
-                    {/* Expandable Resident QR Code & SOS Portal Link */}
-                    <details
-                      style={{
-                        marginTop: '10px',
-                        paddingTop: '10px',
-                        borderTop: '1px solid var(--border-subtle)',
-                        fontSize: 'var(--text-sm)',
-                      }}
-                    >
-                      <summary
-                        style={{
-                          cursor: 'pointer',
-                          color: 'var(--accent)',
-                          fontWeight: 600,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                        }}
+                    <h3 className="sidebar-subheading">Resident SOS QR code</h3>
+                    <div className="qr-code-row">
+                      <svg
+                        width="64"
+                        height="64"
+                        viewBox="0 0 21 21"
+                        className="qr-code-svg"
+                        aria-label={`QR Code for pole ${selectedPole.id}`}
                       >
-                        <span>📱 Resident SOS QR Code ({selectedPole.id})</span>
-                        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Show QR ▾</span>
-                      </summary>
-                      <div
-                        style={{
-                          marginTop: '8px',
-                          padding: '10px',
-                          background: 'var(--bg-elevated)',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-subtle)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                        }}
-                      >
-                        {/* Clean deterministic SVG QR Matrix representation */}
-                        <svg
-                          width="64"
-                          height="64"
-                          viewBox="0 0 21 21"
-                          style={{
-                            background: '#ffffff',
-                            padding: '4px',
-                            borderRadius: '6px',
-                            flexShrink: 0,
-                          }}
-                          aria-label={`QR Code for pole ${selectedPole.id}`}
-                        >
-                          <path
-                            fill="#0a101d"
-                            d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z M14,0 h7 v7 h-7 z M15,1 v5 h5 v-5 z M16,2 h3 v3 h-3 z M0,14 h7 v7 h-7 z M1,15 v5 h5 v-5 z M2,16 h3 v3 h-3 z M8,1 h2 v2 h-2 z M11,2 h2 v3 h-2 z M8,5 h3 v2 h-3 z M1,8 h3 v2 h-3 z M5,9 h4 v2 h-4 z M10,8 h3 v3 h-3 z M14,9 h3 v2 h-3 z M18,8 h2 v4 h-2 z M8,12 h2 v3 h-2 z M11,13 h4 v2 h-4 z M16,12 h3 v2 h-3 z M9,16 h3 v2 h-3 z M13,17 h3 v3 h-3 z M17,15 h3 v3 h-3 z M8,19 h4 v2 h-4 z"
-                          />
-                        </svg>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
-                            Pole {selectedPole.id} QR Entry
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 'var(--text-sm)',
-                              color: 'var(--text-muted)',
-                              wordBreak: 'break-all',
-                              marginBottom: '6px',
-                            }}
-                          >
-                            /sos?pole={selectedPole.id}&amp;zone={selectedPole.zone}
-                          </div>
-                          <Link
-                            to={`/sos?pole=${selectedPole.id}&zone=${selectedPole.zone}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-primary btn-sm"
-                            style={{
-                              fontSize: 'var(--text-sm)',
-                              padding: '4px 10px',
-                              minHeight: '28px',
-                              textDecoration: 'none',
-                              display: 'inline-block',
-                            }}
-                          >
-                            🆘 Open SOS in New Tab ↗
-                          </Link>
+                        <path
+                          fill="#0a101d"
+                          d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z M14,0 h7 v7 h-7 z M15,1 v5 h5 v-5 z M16,2 h3 v3 h-3 z M0,14 h7 v7 h-7 z M1,15 v5 h5 v-5 z M2,16 h3 v3 h-3 z M8,1 h2 v2 h-2 z M11,2 h2 v3 h-2 z M8,5 h3 v2 h-3 z M1,8 h3 v2 h-3 z M5,9 h4 v2 h-4 z M10,8 h3 v3 h-3 z M14,9 h3 v2 h-3 z M18,8 h2 v4 h-2 z M8,12 h2 v3 h-2 z M11,13 h4 v2 h-4 z M16,12 h3 v2 h-3 z M9,16 h3 v2 h-3 z M13,17 h3 v3 h-3 z M17,15 h3 v3 h-3 z M8,19 h4 v2 h-4 z"
+                        />
+                      </svg>
+                      <div className="qr-code-copy">
+                        <div className="details-value">Pole {selectedPole.id} QR entry</div>
+                        <div className="details-note">
+                          /sos?pole={selectedPole.id}&amp;zone={selectedPole.zone}
                         </div>
+                        <Link
+                          to={`/sos?pole=${selectedPole.id}&zone=${selectedPole.zone}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-primary btn-sm"
+                        >
+                          Open SOS in new tab ↗
+                        </Link>
                       </div>
-                    </details>
-                  </>
-                )}
-              </>
+                    </div>
+                  </div>
+                </details>
+              </div>
             )}
 
-            {/* State 2: CCTV Camera Inventory Selected */}
             {selection.type === 'camera' && (
-              <>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '8px',
-                  }}
-                >
-                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>CCTV Map Inventory</span>
-                  <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
-                    Inventory Only
-                  </span>
+              <div className="details-card">
+                <div className="details-card-header">
+                  <div>
+                    <div className="details-eyebrow">CCTV inventory · Estimated coverage</div>
+                    <h2 className="details-title">
+                      {selectedCamera.id} · {selectedCamera.name}
+                    </h2>
+                  </div>
+                  <span className="badge badge-simulated">Inventory only</span>
+                </div>
+                <p className="details-subtitle">
+                  Camera markers show location, viewing direction, and an estimated footprint. No live
+                  video, footage retrieval, or AI CCTV analytics is connected.
+                </p>
+
+                <div className="details-grid">
+                  <div className="details-field">
+                    <span className="details-label">Camera ID</span>
+                    <span className="details-value">{selectedCamera.id}</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Location</span>
+                    <span className="details-value">{selectedCamera.zoneName}</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Status</span>
+                    <span className="details-value warn">Map inventory only · No live feed</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Estimated coverage</span>
+                    <span className="details-value">{selectedCamera.coverageNote}</span>
+                  </div>
+                  <div className="details-field">
+                    <span className="details-label">Integration</span>
+                    <span className="details-value">Not connected</span>
+                  </div>
                 </div>
 
-                <div className="form-group mb-2">
-                  <label className="form-label" htmlFor="camera-select">
-                    Select Camera Marker
-                  </label>
-                  <select
-                    id="camera-select"
-                    className="form-control"
-                    value={selectedCamera.id}
-                    onChange={(e) => handleSelectCamera(e.target.value)}
-                  >
-                    {CCTV_CAMERAS.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.id} · {c.name} ({c.zoneName})
-                      </option>
-                    ))}
-                  </select>
+                <div className="notice notice-warning">
+                  No camera view available. On-site check required.
                 </div>
 
-                <div className="metric-row">
-                  <span className="metric-label">Camera ID</span>
-                  <span className="metric-value">{selectedCamera.id}</span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Monitored Zone</span>
-                  <span className="metric-value">{selectedCamera.zoneName}</span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Integration Status</span>
-                  <span className="metric-value warn" style={{ fontSize: 'var(--text-sm)' }}>
-                    Map Inventory Only (No Live Feed)
-                  </span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Viewing Basis</span>
-                  <span className="metric-value" style={{ fontSize: 'var(--text-sm)' }}>
-                    {selectedCamera.coverageNote}
-                  </span>
-                </div>
-
-                <div className="notice notice-info mt-2" style={{ fontSize: 'var(--text-sm)' }}>
-                  <strong>Honest Camera Boundary:</strong> {selectedCamera.limitations} A viewing cone on the map is an estimate and does not guarantee identification or supply live video without authorized stream integration.
-                </div>
-              </>
+                <details className="sidebar-details">
+                  <summary>More details</summary>
+                  <div className="sidebar-details-body">
+                    <label className="form-group" htmlFor="camera-select">
+                      <span className="form-label">Choose a camera</span>
+                      <select
+                        id="camera-select"
+                        className="form-control"
+                        value={selectedCamera.id}
+                        onChange={(event) => handleSelectCamera(event.target.value)}
+                      >
+                        {CCTV_CAMERAS.map((camera) => (
+                          <option key={camera.id} value={camera.id}>
+                            {camera.id} · {camera.name} ({camera.zoneName})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="metric-row">
+                      <span className="metric-label">World coordinates (X / Z)</span>
+                      <code className="metric-value">
+                        [{selectedCamera.position[0]}, {selectedCamera.position[1]}]
+                      </code>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Estimated footprint</span>
+                      <span className="metric-value">
+                        {selectedCamera.footprint.mountHeightM}m mount ·{' '}
+                        {selectedCamera.footprint.estimatedRangeM}m usable range ·{' '}
+                        {selectedCamera.footprint.horizontalFovDeg}° field of view
+                      </span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Viewing basis</span>
+                      <span className="metric-value">
+                        Estimated from mount and aim — not a site survey
+                      </span>
+                    </div>
+                    <p className="details-note">{selectedCamera.limitations}</p>
+                  </div>
+                </details>
+              </div>
             )}
 
-            {/* State 3: Person (LiDAR) Selected */}
             {selection.type === 'person' && (
-              <VisitorControlCenter
+              <PersonDetailsCard
                 personas={personasForControlCenter}
                 selectedPersonaId={selectedPersonaId}
-                onSelectPersona={(pId) => {
-                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
-                  if (idx >= 0) handleSelectAnonymousDot(idx);
-                }}
-                onTriggerAction={(pId, actId) => {
-                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
-                  if (idx >= 0) {
-                    const res = dispatchPersonaAction(idx, actId as PersonaActionType);
-                    if (!res.success) {
-                      setLastFeedbackMessage(res.reason);
-                    } else {
-                      setLastFeedbackMessage(`Action "${actId}" activated for Visitor #${idx + 1}`);
-                      if (res.observation) {
-                        const obs = res.observation;
-                        setLastDetectionByPersonaId((prev) => ({
-                          ...prev,
-                          [pId]: {
-                            personaId: pId,
-                            clusterId: `LIDAR-P-0${idx + 1}`,
-                            verdict: obs.detected ? 'Fall Detected (Alert Triggered)' : 'Coverage Gap (Out of Range / Occluded)',
-                            sensorId: null,
-                            poleId: null,
-                            distanceM: null,
-                            timestampIso: new Date().toLocaleTimeString(),
-                          },
-                        }));
-                      }
-                    }
-                  }
-                }}
-                onRecoverPersona={(pId) => {
-                  const idx = PERSONA_DEFINITIONS.findIndex((p) => p.id === pId);
-                  if (idx >= 0) {
-                    recoverPersona(idx);
-                    setLastFeedbackMessage(`Visitor #${idx + 1} recovered to normal patrol loop`);
-                  }
-                }}
-                backgroundActivityEnabled={backgroundActivityEnabled}
-                onToggleBackgroundActivity={toggleBackgroundActivity}
+                approxLocation={selection.approxLocation}
                 operationalLidarNodes={operationalLidarNodes}
                 lastDetectionByPersonaId={lastDetectionByPersonaId}
-                lastFeedbackMessage={lastFeedbackMessage}
+                onOpenDemo={() => setSidebarTab('demo')}
               />
             )}
 
-            {/* State 4: Guard Selected */}
-            {selection.type === 'guard' && (
-              <>
-                {(() => {
-                  const activeDispatched = dispatchedGuards.find((g) => g.guardId === selection.guardId);
-                  const guardInfo = guards.find((g) => g.id === selection.guardId);
-                  const officerName = activeDispatched?.guardName || guardInfo?.displayName || 'Officer';
-                  const officerRole = guardInfo?.role || 'Security Guard';
-                  const statusText = activeDispatched
-                    ? activeDispatched.status === 'arrived'
-                      ? `On Scene at ${activeDispatched.targetPoleId}`
-                      : activeDispatched.status === 'returning'
-                      ? 'Returning to Security Post'
-                      : `En Route to ${activeDispatched.targetPoleId}`
-                    : 'On Standby / Station';
+            {selection.type === 'guard' &&
+              (() => {
+                const activeDispatched = dispatchedGuards.find(
+                  (guard) => guard.guardId === selection.guardId,
+                );
+                const guardInfo = guards.find((guard) => guard.id === selection.guardId);
+                const officerName =
+                  activeDispatched?.guardName || guardInfo?.displayName || 'Officer';
+                const officerRole = guardInfo?.role || 'Security Guard';
+                const responseStatus = activeDispatched
+                  ? activeDispatched.status === 'arrived'
+                    ? `On scene at ${activeDispatched.targetPoleId}`
+                    : activeDispatched.status === 'returning'
+                    ? 'Returning to security post'
+                    : `En route to ${activeDispatched.targetPoleId}`
+                  : 'On standby at security post';
 
-                  return (
-                    <>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '10px',
-                        }}
-                      >
-                        <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>
-                          Security Guard
-                        </h3>
-                        <span className="badge badge-blue" style={{ fontSize: 'var(--text-sm)' }}>
-                          Guard Location (Simulated)
+                return (
+                  <div className="details-card">
+                    <div className="details-card-header">
+                      <div>
+                        <div className="details-eyebrow">Separate guard tracking · Simulated</div>
+                        <h2 className="details-title">{officerName}</h2>
+                      </div>
+                      <span className="badge badge-blue">Guard location (simulated)</span>
+                    </div>
+                    <p className="details-subtitle">
+                      Guard positions come from a separate simulation. They are not identified through
+                      LiDAR and are not merged with anonymous person clusters.
+                    </p>
+
+                    <div className="details-grid">
+                      <div className="details-field">
+                        <span className="details-label">Guard ID</span>
+                        <span className="details-value">{selection.guardId}</span>
+                      </div>
+                      <div className="details-field">
+                        <span className="details-label">Role</span>
+                        <span className="details-value">{officerRole}</span>
+                      </div>
+                      <div className="details-field">
+                        <span className="details-label">Assignment</span>
+                        <span className="details-value">
+                          {activeDispatched
+                            ? `Case ${activeDispatched.incidentId} · ${activeDispatched.targetPoleId}`
+                            : 'No active assignment'}
                         </span>
                       </div>
+                      <div className="details-field">
+                        <span className="details-label">Response status</span>
+                        <span className="details-value ok">{responseStatus}</span>
+                      </div>
+                    </div>
 
-                      {dispatchedGuards.length > 1 && (
-                        <div className="form-group mb-2">
-                          <label className="form-label" htmlFor="dispatched-guard-select">
-                            Select Dispatched Officer
+                    <details className="sidebar-details">
+                      <summary>More details</summary>
+                      <div className="sidebar-details-body">
+                        {dispatchedGuards.length > 1 && (
+                          <label className="form-group" htmlFor="dispatched-guard-select">
+                            <span className="form-label">Choose a dispatched officer</span>
+                            <select
+                              id="dispatched-guard-select"
+                              className="form-control"
+                              value={selection.guardId}
+                              onChange={(event) => handleSelectGuard(event.target.value)}
+                            >
+                              {dispatchedGuards.map((guard) => (
+                                <option key={guard.guardId} value={guard.guardId}>
+                                  {guard.guardName} ({guard.status})
+                                </option>
+                              ))}
+                            </select>
                           </label>
-                          <select
-                            id="dispatched-guard-select"
-                            className="form-control"
-                            value={selection.guardId}
-                            onChange={(e) => handleSelectGuard(e.target.value)}
-                          >
-                            {dispatchedGuards.map((dg) => (
-                              <option key={dg.guardId} value={dg.guardId}>
-                                {dg.guardName} ({dg.status})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                      <div className="metric-row">
-                        <span className="metric-label">Officer</span>
-                        <span className="metric-value" style={{ color: '#38bdf8', fontWeight: 700 }}>
-                          {officerName}
-                        </span>
+                        )}
+                        {activeDispatched && (
+                          <>
+                            <div className="metric-row">
+                              <span className="metric-label">Target coordinates (X / Z)</span>
+                              <code className="metric-value">
+                                [{activeDispatched.targetPos[0]}, {activeDispatched.targetPos[1]}]
+                              </code>
+                            </div>
+                            <div className="metric-row">
+                              <span className="metric-label">Linked case</span>
+                              <span className="metric-value">
+                                <Link
+                                  to="/incidents"
+                                  onClick={() => setSelectedIncidentId(activeDispatched.incidentId)}
+                                >
+                                  Open {activeDispatched.incidentId} ↗
+                                </Link>
+                              </span>
+                            </div>
+                          </>
+                        )}
+                        <p className="details-note">
+                          Status reflects saved demo assignment data, not a real dispatch or arrival.
+                          No guard acknowledgement is inferred from a timer.
+                        </p>
                       </div>
-                      <div className="metric-row">
-                        <span className="metric-label">Role</span>
-                        <span className="metric-value">{officerRole}</span>
-                      </div>
-                      <div className="metric-row">
-                        <span className="metric-label">Patrol Status</span>
-                        <span className="metric-value ok">{statusText}</span>
-                      </div>
-                    </>
-                  );
-                })()}
-              </>
+                    </details>
+                  </div>
+                );
+              })()}
+
+            <div className="sidebar-link-row">
+              <Link to="/incidents" className="btn btn-secondary btn-sm">
+                Case history ↗
+              </Link>
+              <Link to="/system" className="btn btn-secondary btn-sm">
+                System graphs &amp; diagnostics ↗
+              </Link>
+            </div>
+            <p className="details-note">
+              Recent alerts and detailed diagnostics have moved to Incidents and System so this panel
+              stays focused on the selected entity.
+            </p>
+          </div>
+          <div
+            id="sidebar-demo-panel"
+            role="tabpanel"
+            aria-labelledby="sidebar-demo-tab"
+            className="sidebar-tab-panel"
+            hidden={sidebarTab !== 'demo'}
+          >
+            <section className="demo-section" aria-labelledby="demo-visitor-heading">
+              <h2 id="demo-visitor-heading" className="demo-section-title">
+                Simulated visitor
+              </h2>
+              <p className="scenario-copy">
+                This is the same visitor selection used by the map. Choosing a visitor does not move the
+                camera or run a scenario.
+              </p>
+              <label className="visitor-selector" htmlFor="demo-visitor-select">
+                <span className="details-label">Visitor</span>
+                <select
+                  id="demo-visitor-select"
+                  className="form-control"
+                  value={selectedPersona?.id ?? ''}
+                  onChange={(event) => {
+                    const nextIndex = PERSONA_DEFINITIONS.findIndex(
+                      (persona) => persona.id === event.target.value,
+                    );
+                    if (nextIndex >= 0) handleSelectAnonymousDot(nextIndex, false);
+                  }}
+                >
+                  {personasForControlCenter.map((persona) => (
+                    <option key={persona.id} value={persona.id}>
+                      #{persona.number} · {persona.name} · {persona.clusterId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedPersona && (
+                <div className="visitor-status-row">
+                  <span>{selectedPersona.roleLabel}</span>
+                  <span>
+                    {selectedPersona.activeAction} ({formatPersonaState(selectedPersona.state)})
+                  </span>
+                </div>
+              )}
+            </section>
+
+            {lastFeedbackMessage && (
+              <div className="demo-feedback" role="status">
+                {lastFeedbackMessage}
+              </div>
             )}
 
-            {/* Event History (Collapsible Simulation Diagnostics) */}
-            <details
-              style={{
-                marginTop: '12px',
-                background: 'rgba(15, 23, 42, 0.65)',
-                border: '1px solid #334155',
-                borderRadius: '6px',
-                padding: '8px 10px',
-              }}
-            >
-              <summary
-                style={{
-                  fontWeight: 600,
-                  fontSize: 'var(--text-sm)',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <span>📜 Event History &amp; Diagnostics ({simulationDiagnostics.length})</span>
-                {simulationDiagnostics.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      clearSimulationDiagnostics();
-                    }}
-                    style={{
-                      fontSize: '11px',
-                      background: 'rgba(51, 65, 85, 0.5)',
-                      border: '1px solid #475569',
-                      color: '#cbd5e1',
-                      borderRadius: '4px',
-                      padding: '2px 6px',
-                      cursor: 'pointer',
-                    }}
-                    aria-label="Clear diagnostic history"
-                  >
-                    Clear History
-                  </button>
-                )}
-              </summary>
-              <div style={{ marginTop: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                {simulationDiagnostics.length === 0 ? (
-                  <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', padding: '4px 0' }}>
-                    No historical simulation events recorded yet.
-                  </div>
-                ) : (
-                  simulationDiagnostics.slice(0, 10).map((diag) => {
-                    const clusterLabel =
-                      diag.personaIndex !== undefined
-                        ? `Cluster #0${diag.personaIndex + 1}`
-                        : diag.nearestPoleId
-                        ? `Pole ${diag.nearestPoleId}`
-                        : 'Park Area';
-                    const isGap = diag.eventType === 'coverage_gap_fall';
-                    return (
-                      <div
-                        key={diag.id}
-                        style={{
-                          marginBottom: '8px',
-                          paddingBottom: '8px',
-                          borderBottom: '1px solid rgba(51, 65, 85, 0.4)',
-                          fontSize: '11px',
-                        }}
+            <section className="demo-section" aria-labelledby="demo-quick-actions-heading">
+              <h2 id="demo-quick-actions-heading" className="demo-section-title">
+                Quick actions
+              </h2>
+              <p className="scenario-copy">
+                These affect the selected visitor only. A collapsed visitor accepts Call for Help,
+                Collapse, or Recover.
+              </p>
+              <div className="quick-actions">
+                {QUICK_ACTION_IDS.map((actionId) => {
+                  const action = selectedPersona?.supportedActions.find(
+                    (item) => item.id === actionId,
+                  );
+                  const isCollapsed = selectedPersona?.state === 'collapsed';
+                  const isLocked =
+                    isCollapsed && actionId !== 'call_help' && actionId !== 'collapse';
+                  const isDanger = actionId === 'collapse' || actionId === 'call_help';
+                  return (
+                    <button
+                      key={actionId}
+                      type="button"
+                      id={`quick-action-${actionId}`}
+                      className={`quick-action-btn ${isDanger ? 'danger' : ''}`}
+                      disabled={!selectedPersona || !action || isLocked}
+                      onClick={() =>
+                        selectedPersona && handleTriggerPersonaAction(selectedPersona.id, actionId)
+                      }
+                    >
+                      <span>{QUICK_ACTION_LABELS[actionId] || action?.label || actionId}</span>
+                      <small>
+                        {!action
+                          ? 'Not supported by this visitor'
+                          : isLocked
+                          ? 'Recover the visitor to use this action'
+                          : actionId === 'pause_tree'
+                          ? 'Existing pause action; stays upright'
+                          : actionId === 'collapse'
+                          ? 'At the current map position'
+                          : actionId === 'call_help'
+                          ? 'Signals distress while staying in place'
+                          : action.label}
+                      </small>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  id="quick-action-recover"
+                  className="quick-action-btn"
+                  disabled={!selectedPersona}
+                  onClick={() => selectedPersona && handleRecoverPersona(selectedPersona.id)}
+                >
+                  <span>Recover visitor</span>
+                  <small>Restore only this simulated visitor</small>
+                </button>
+              </div>
+            </section>
+
+            <details className="sidebar-details">
+              <summary>More actions</summary>
+              <div className="sidebar-details-body">
+                <p className="scenario-copy">
+                  Other actions supported by this simulated visitor.
+                </p>
+                <div className="more-actions-grid">
+                  {selectedPersona?.supportedActions
+                    .filter((action) => !QUICK_ACTION_IDS.includes(action.id))
+                    .map((action) => (
+                      <button
+                        key={action.id}
+                        type="button"
+                        className="more-action-btn"
+                        disabled={selectedPersona.state === 'collapsed'}
+                        onClick={() => handleTriggerPersonaAction(selectedPersona.id, action.id)}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4, marginBottom: 2 }}>
-                          <span style={{ color: isGap ? '#f59e0b' : '#38bdf8', fontWeight: 600 }}>
-                            {diag.title}
-                          </span>
-                          <span style={{ color: '#64748b', fontSize: '10px', whiteSpace: 'nowrap' }}>
-                            {diag.timestamp}
-                          </span>
-                        </div>
-                        <div style={{ color: '#94a3b8', fontSize: '10px', marginBottom: 2 }}>
-                          Target: <strong style={{ color: '#cbd5e1' }}>{clusterLabel}</strong> ·{' '}
-                          <span style={{ color: '#64748b' }}>HISTORICAL LOG</span>
-                        </div>
-                        <div style={{ color: '#94a3b8', fontSize: '10px', lineHeight: 1.35 }}>
-                          {diag.details}
-                        </div>
-                      </div>
-                    );
-                  })
+                        {action.icon ? `${action.icon} ` : ''}
+                        {action.label}
+                      </button>
+                    ))}
+                </div>
+                {selectedPersona?.state === 'collapsed' && (
+                  <p className="details-note">
+                    Actions are locked while collapsed. Use Call for Help or Recover visitor.
+                  </p>
                 )}
               </div>
             </details>
-          </div>
 
-          {/* 2. LiDAR Placement Study · 16 Proposed */}
-          <div className="panel">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <h2 className="panel-title" style={{ margin: 0 }}>LiDAR Placement Study · 16 Proposed</h2>
-              <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', fontSize: '11px', border: '1px solid rgba(245, 158, 11, 0.4)' }}>
-                Coverage Study
-              </span>
-            </div>
-            <p className="plan-explanation" style={{ fontSize: '13px', lineHeight: 1.4, margin: '6px 0 10px', color: 'var(--text-secondary)' }}>
-              Proposed LiDAR posts are a coverage-planning visualization only. They do not participate in live simulated incident detection.
-            </p>
-
-            {/* Independent layer toggles: Show proposed posts, and estimated range rings */}
-            <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', marginBottom: '10px' }}>
-              <label className="toggle-label" style={{ color: '#f59e0b', fontSize: '13px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  id="study-posts-toggle"
-                  checked={showStudyPosts}
-                  onChange={(e) => setShowStudyPosts(e.target.checked)}
-                />
-                Show proposed posts on map
-              </label>
-              <label
-                className="toggle-label"
-                style={{
-                  color: '#f59e0b',
-                  fontSize: '13px',
-                  opacity: showStudyPosts ? 1 : 0.5,
-                  cursor: showStudyPosts ? 'pointer' : 'not-allowed',
-                }}
-                title={showStudyPosts ? 'Show 13m nominal range rings around proposed posts' : 'Enable proposed posts first'}
-              >
-                <input
-                  type="checkbox"
-                  id="lidar-ranges-toggle"
-                  checked={showLidarRanges}
-                  disabled={!showStudyPosts}
-                  onChange={(e) => setShowLidarRanges(e.target.checked)}
-                />
-                Estimated range rings (13m)
-              </label>
-            </div>
-
-            <div className="form-group mb-2">
-              <label className="form-label" htmlFor="planned-lidar-select" style={{ fontSize: '12px' }}>
-                Inspect proposed sensor
-              </label>
-              <select
-                id="planned-lidar-select"
-                className="form-control"
-                value={selectedPlannedLidar}
-                onChange={(e) => setSelectedPlannedLidar(e.target.value)}
-              >
-                <option value="">Choose a proposed sensor (PLAN-L01 to PLAN-L16)</option>
-                {PLANNED_LIDARS.map((sensor) => (
-                  <option key={sensor.id} value={sensor.id}>
-                    {sensor.id} · {sensor.area}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {selectedPlannedSensor && (
-              <div
-                style={{
-                  marginTop: '8px',
-                  padding: '10px 12px',
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '6px',
-                  fontSize: 'var(--text-sm)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <strong style={{ color: '#fde68a' }}>{selectedPlannedSensor.id} · Proposed LiDAR</strong>
-                  <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', fontSize: '11px' }}>
-                    Non-Operational
-                  </span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Planned Zone</span>
-                  <span className="metric-value">{selectedPlannedSensor.area}</span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Nominal Range</span>
-                  <span className="metric-value">{selectedPlannedSensor.range}m (Illustrative assumption)</span>
-                </div>
-                <div className="metric-row">
-                  <span className="metric-label">Operational Detection</span>
-                  <span className="metric-value muted">Inactive (Planning layer only)</span>
-                </div>
-                {!showStudyPosts && (
-                  <div style={{ marginTop: '8px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm btn-full"
-                      style={{ fontSize: '12px', borderColor: 'rgba(245, 158, 11, 0.5)', color: '#fde68a' }}
-                      onClick={() => setShowStudyPosts(true)}
-                    >
-                      👁️ Show on map
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 3. Guided 3-Tab Demo Controls Panel */}
-          <div className="panel">
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px',
-              }}
-            >
-              <h2 className="panel-title" style={{ margin: 0 }}>
-                Interactive Demo Controls
+            <section className="demo-section" aria-labelledby="demo-scenarios-heading">
+              <h2 id="demo-scenarios-heading" className="demo-section-title">
+                Guided scenarios
               </h2>
-              <button
-                id="demo-reset-btn"
-                className="btn btn-ghost btn-sm"
-                style={{ fontSize: 'var(--text-sm)', padding: '2px 8px', minHeight: '28px' }}
-                onClick={() => {
-                  handleReset();
-                  clearLatestResults();
-                  setBlindSpotResult(null);
-                  setStatusBanner(null);
-                  setErrorBanner(null);
-                }}
-              >
-                ↺ Reset All
-              </button>
-            </div>
-
-            <div
-              className="entity-switch-row"
-              role="tablist"
-              aria-label="Demo scenario categories"
-              style={{ marginBottom: '10px' }}
-            >
-              <button
-                type="button"
-                className={`entity-switch-btn ${activeTab === 'lidar' ? 'active' : ''}`}
-                onClick={() => setActiveTab('lidar')}
-                role="tab"
-                aria-selected={activeTab === 'lidar'}
-              >
-                🧍 1. LiDAR Fall AI
-              </button>
-              <button
-                type="button"
-                className={`entity-switch-btn ${activeTab === 'sound' ? 'active' : ''}`}
-                onClick={() => setActiveTab('sound')}
-                role="tab"
-                aria-selected={activeTab === 'sound'}
-              >
-                🔊 2. Sound AI
-              </button>
-              <button
-                type="button"
-                className={`entity-switch-btn ${activeTab === 'env' ? 'active' : ''}`}
-                onClick={() => setActiveTab('env')}
-                role="tab"
-                aria-selected={activeTab === 'env'}
-              >
-                🌲 3. Park &amp; Lights
-              </button>
-            </div>
-
-            {errorBanner && (
-              <div
-                className="notice notice-warning"
-                style={{ marginBottom: '10px', fontSize: 'var(--text-sm)', color: '#fca5a5', borderColor: '#ef4444' }}
-              >
-                {errorBanner}
-              </div>
-            )}
-
-            {/* TAB 1: LiDAR Fall vs. Lookalike Immunity */}
-            {activeTab === 'lidar' && (
-              <div className="scenario-section">
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
-                  Compare a person stopping upright on West Loop (<strong>AS-104</strong>) vs. collapsing to the ground.
-                </p>
-
+              <p className="scenario-copy">
+                <strong>Collapse selected visitor here</strong> is a quick action at the visitor's
+                current position. The scripted fall below always runs the documented AS-104
+                demonstration.
+              </p>
+              <div className="demo-scenario-list">
                 <button
-                  id="demo-standing-stop-btn"
-                  className="scenario-btn"
-                  onClick={async () => {
-                    const res = await triggerStandingStopLookalike();
-                    setSelection({
-                      type: 'person',
-                      dotIndex: 0,
-                      approxLocation: 'West Loop · Near Pole AS-104',
-                      stationary: false,
-                    });
-                    setStatusBanner(`LiDAR Lookalike Test: ${res.plain_label} — Height stays 1.72m upright.`);
-                  }}
-                >
-                  <span>1. Person Stops Upright (AS-104)</span>
-                  <span className="scenario-pill pill-norm">No Alert</span>
-                </button>
-
-                <button
+                  type="button"
                   id="demo-silent-fall-btn"
                   className="scenario-btn"
-                  onClick={async () => {
-                    const res = await triggerSilentFall();
-                    setSelection({
-                      type: 'person',
-                      dotIndex: 0,
-                      approxLocation: 'West Loop · Near Pole AS-104',
-                      stationary: true,
-                    });
-                    setStatusBanner(
-                      `Silent Fall Detected: Height dropped 1.72m → 0.34m. AS-104 light boosted to 100% (${res.plain_label}).`,
-                    );
-                  }}
+                  onClick={runSilentFallScenario}
                 >
-                  <span>2. Silent Fall Collapse (AS-104 + 100% Light)</span>
+                  <span>Run scripted fall at AS-104</span>
                   <span className="scenario-pill pill-review">Needs Review</span>
                 </button>
-
                 <button
+                  type="button"
                   id="demo-combined-btn"
                   className="scenario-btn"
-                  onClick={async () => {
-                    await triggerCombined();
-                    setStatusBanner(
-                      'Signals Agree (Urgent): Distress sound + LiDAR fall in West Loop within 15s window.',
-                    );
-                  }}
+                  onClick={runCombinedScenario}
                 >
-                  <span>3. Signals Agree: Fall + Scream (Same Zone)</span>
+                  <span>Sound + movement in the same zone</span>
                   <span className="scenario-pill pill-urgent">Urgent</span>
                 </button>
-
                 <button
-                  id="demo-unrelated-signals-btn"
-                  className="scenario-btn"
-                  onClick={async () => {
-                    await triggerUnrelatedSignals();
-                    setStatusBanner(
-                      'Different Zones: Scream at North Entrance (AS-101) + Fall at West Loop (AS-104) kept as 2 separate cases.',
-                    );
-                  }}
-                >
-                  <span>4. Separate Zones Test (AS-101 vs AS-104)</span>
-                  <span className="scenario-pill pill-cov">2 Separate Cases</span>
-                </button>
-
-                <button
+                  type="button"
                   id="demo-cctv-blind-spot-btn"
                   className="scenario-btn"
-                  onClick={() => {
-                    const res = triggerResidentialBlindSpotFall();
-                    setBlindSpotResult(res);
-                    setSelection({
-                      type: 'person',
-                      dotIndex: 2,
-                      approxLocation: 'Sector D · East Lake Bank (Residential Route)',
-                      stationary: true,
-                    });
-                    const sensor = res.lidar.primarySensor;
-                    setStatusBanner(
-                      res.detected && sensor
-                        ? `CCTV Blind Spot: ${sensor.sensorId} detected the fall at ${sensor.distanceM}m. ${
-                            res.camera.covered
-                              ? `Estimated CCTV coverage from ${res.camera.coveredByCameraId}; no feed connected.`
-                              : `Estimated CCTV coverage: none — nearest ${res.camera.nearestCameraId} is ${res.camera.nearestDistanceM}m away and ${res.camera.nearestOffAxisDeg}° off its aim line. ${NO_CAMERA_VIEW_MESSAGE}`
-                          }`
-                        : `Fall not detected by operational LiDAR — ${res.reason}`,
-                    );
-                  }}
+                  onClick={runResidentialBlindSpotScenario}
                 >
-                  <span>5. CCTV Blind Spot — Residential East Lake Bank</span>
-                  <span className="scenario-pill pill-review">LiDAR Only</span>
+                  <span>CCTV blind-spot demonstration</span>
+                  <span className="scenario-pill pill-review">LiDAR only</span>
                 </button>
+              </div>
 
-                {blindSpotResult && (
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '10px 12px',
-                      background: 'rgba(15, 23, 42, 0.65)',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      borderRadius: '8px',
-                      fontSize: 'var(--text-sm)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      <strong style={{ color: 'var(--text-primary)' }}>
-                        CCTV Blind Spot — East Lake Bank
-                      </strong>
-                      <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
-                        SIMULATED
-                      </span>
-                    </div>
-
-                    <div className="metric-row">
-                      <span className="metric-label">Operational LiDAR</span>
-                      <span className="metric-value ok">
-                        {blindSpotResult.detected && blindSpotResult.lidar.primarySensor
-                          ? `Detected by ${blindSpotResult.lidar.primarySensor.sensorId} at ${blindSpotResult.lidar.primarySensor.distanceM}m (${blindSpotResult.lidar.primarySensor.checks.lineOfSight.passed ? 'clear line of sight' : 'obstructed'})`
-                          : 'Not detected'}
-                      </span>
-                    </div>
-
-                    <div className="metric-row">
-                      <span className="metric-label">Estimated CCTV Coverage</span>
-                      <span className={`metric-value ${blindSpotResult.camera.covered ? 'ok' : 'warn'}`}>
-                        {blindSpotResult.camera.covered
-                          ? `Yes — ${blindSpotResult.camera.coveredByCameraId} (estimate)`
-                          : 'None'}
-                      </span>
-                    </div>
-
-                    {!blindSpotResult.camera.covered && blindSpotResult.camera.nearestCameraId && (
-                      <div className="metric-row">
-                        <span className="metric-label">Nearest Camera</span>
-                        <span className="metric-value">
-                          {blindSpotResult.camera.nearestCameraId} · {blindSpotResult.camera.nearestDistanceM}m
-                          away · {blindSpotResult.camera.nearestOffAxisDeg}° off its aim line
-                        </span>
-                      </div>
-                    )}
-
-                    <div
-                      style={{
-                        marginTop: '8px',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        background: blindSpotResult.camera.covered
-                          ? 'rgba(6, 78, 59, 0.35)'
-                          : 'rgba(120, 53, 15, 0.35)',
-                        border: `1px solid ${blindSpotResult.camera.covered ? '#059669' : '#d97706'}`,
-                        color: blindSpotResult.camera.covered ? '#a7f3d0' : '#fde68a',
-                        lineHeight: 1.45,
-                      }}
+              {blindSpotResult && (
+                <div className="blindspot-summary">
+                  <div className="blindspot-summary-header">
+                    <strong>CCTV blind spot · East Lake Bank</strong>
+                    <span className="badge badge-simulated">Simulated</span>
+                  </div>
+                  <div className="metric-row">
+                    <span className="metric-label">Operational LiDAR</span>
+                    <span className="metric-value ok">
+                      {blindSpotResult.detected && blindSpotResult.lidar.primarySensor
+                        ? `Detected by ${blindSpotResult.lidar.primarySensor.sensorId} at ${blindSpotResult.lidar.primarySensor.distanceM}m`
+                        : 'Not detected'}
+                    </span>
+                  </div>
+                  <div className="metric-row">
+                    <span className="metric-label">Estimated CCTV coverage</span>
+                    <span
+                      className={`metric-value ${
+                        blindSpotResult.camera.covered ? 'ok' : 'warn'
+                      }`}
                     >
                       {blindSpotResult.camera.covered
-                        ? blindSpotResult.camera.cameraContext
-                        : NO_CAMERA_VIEW_MESSAGE}
-                    </div>
-
-                    <div style={{ marginTop: '6px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                      {blindSpotResult.camera.explanation}
-                    </div>
-                    <div style={{ marginTop: '4px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-                      Footprints are mapped estimates from mount and aim — not a site survey, not a live
-                      feed, and not evidence that a person can be identified.
-                    </div>
+                        ? `Yes — ${blindSpotResult.camera.coveredByCameraId} (estimate)`
+                        : 'None'}
+                    </span>
                   </div>
-                )}
-
-                {latestLidarEval && (
+                  {!blindSpotResult.camera.covered && blindSpotResult.camera.nearestCameraId && (
+                    <div className="metric-row">
+                      <span className="metric-label">Nearest camera</span>
+                      <span className="metric-value">
+                        {blindSpotResult.camera.nearestCameraId} ·{' '}
+                        {blindSpotResult.camera.nearestDistanceM}m away ·{' '}
+                        {blindSpotResult.camera.nearestOffAxisDeg}° off its aim line
+                      </span>
+                    </div>
+                  )}
                   <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '10px 12px',
-                      background: 'rgba(15, 23, 42, 0.65)',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      borderRadius: '8px',
-                      fontSize: 'var(--text-sm)',
-                    }}
+                    className={`blindspot-verdict ${
+                      blindSpotResult.camera.covered ? 'covered' : 'gap'
+                    }`}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      <strong style={{ color: 'var(--text-primary)' }}>LiDAR 3D Cluster Readout</strong>
-                      <span className="badge badge-simulated" style={{ fontSize: 'var(--text-sm)' }}>
-                        SIMULATED
-                      </span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Result</span>
-                      <span
-                        className={`metric-value ${
-                          latestLidarEval.trigger_incident ? 'warn' : 'ok'
-                        }`}
-                      >
-                        {latestLidarEval.plain_label}
-                      </span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Height Change</span>
-                      <span className="metric-value">
-                        {latestLidarEval.kinematics.initial_height_m}m →{' '}
-                        {latestLidarEval.kinematics.final_height_m}m
-                      </span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Vertical Drop Speed</span>
-                      <span className="metric-value">
-                        {latestLidarEval.kinematics.drop_speed_mps} m/s
-                      </span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">Lighting Action</span>
-                      <span className="metric-value" style={{ fontSize: 'var(--text-sm)' }}>
-                        {latestLidarEval.lighting_note}
-                      </span>
-                    </div>
+                    {blindSpotResult.camera.covered
+                      ? blindSpotResult.camera.cameraContext
+                      : NO_CAMERA_VIEW_MESSAGE}
                   </div>
-                )}
-              </div>
-            )}
+                  <p className="details-note">
+                    {blindSpotResult.camera.explanation} Footprints are mapped estimates — not a site
+                    survey, live feed, or evidence that a person can be identified.
+                  </p>
+                </div>
+              )}
+            </section>
 
-            {/* TAB 2: Sound AI (YAMNet Recorded WAV & Live Mic) */}
-            {activeTab === 'sound' && (
-              <div className="scenario-section">
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
-                  Click <strong>▶ Listen</strong> to hear the real WAV clip, or <strong>Analyze</strong> to run YAMNet.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {BENCHMARK_SAMPLES.map((sample) => {
-                    const isPlaying = playingSampleId === sample.id;
-                    const isAnalyzing = analyzingSampleId === sample.id;
-                    return (
-                      <div
-                        key={sample.id}
-                        style={{
-                          padding: '8px 10px',
-                          background: 'var(--bg-elevated)',
-                          borderRadius: '8px',
-                          border: '1px solid rgba(148, 163, 184, 0.14)',
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
-                            {sample.title}
-                          </strong>
-                          <span className={`scenario-pill ${sample.badgeClass}`}>
-                            {sample.badgeText}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 'var(--text-sm)',
-                            color: 'var(--text-muted)',
-                            marginBottom: '6px',
-                          }}
-                        >
-                          {sample.desc}
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            style={{ fontSize: 'var(--text-sm)', padding: '4px 10px', minHeight: '30px' }}
-                            onClick={() => handleTogglePlaySample(sample.id)}
-                          >
-                            {isPlaying ? '⏹ Stop' : '▶ Listen'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            style={{
-                              fontSize: 'var(--text-sm)',
-                              padding: '4px 10px',
-                              minHeight: '30px',
-                              flex: 1,
-                            }}
-                            onClick={() => handleRunRecordedSample(sample.id)}
-                            disabled={isAnalyzing}
-                          >
-                            {isAnalyzing ? 'Analyzing WAV…' : '⚡ Analyze with YAMNet'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-
+            <details className="sidebar-details">
+              <summary>More scenarios</summary>
+              <div className="sidebar-details-body">
+                <div className="demo-scenario-list">
                   <button
                     type="button"
-                    className="btn btn-secondary btn-sm btn-full"
-                    style={{
-                      marginTop: '2px',
-                      minHeight: '38px',
-                      fontWeight: 600,
-                      borderColor: isRecordingMic ? 'var(--urgent)' : 'var(--accent)',
-                      color: isRecordingMic ? '#fca5a5' : 'var(--text-primary)',
-                    }}
-                    onClick={handleRecordLiveMic}
-                    disabled={isRecordingMic || analyzingSampleId === 'live_mic'}
+                    id="demo-standing-stop-btn"
+                    className="scenario-btn"
+                    onClick={runStandingStopScenario}
                   >
-                    {isRecordingMic
-                      ? `🔴 Recording Microphone (${micCountdown}s)… Speak or Scream!`
-                      : analyzingSampleId === 'live_mic'
-                      ? 'Processing 16kHz WAV in YAMNet…'
-                      : '🎤 Test Live Microphone (3s Recording)'}
+                    <span>Person stops upright (AS-104)</span>
+                    <span className="scenario-pill pill-norm">No alert</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="demo-unrelated-signals-btn"
+                    className="scenario-btn"
+                    onClick={runUnrelatedSignalsScenario}
+                  >
+                    <span>Separate zones (AS-101 vs AS-104)</span>
+                    <span className="scenario-pill pill-cov">2 cases</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="demo-scream-btn"
+                    className="scenario-btn"
+                    onClick={() => {
+                      triggerScream();
+                      setStatusBanner(
+                        'Simulated Scream (AS-101): Synthetic alert injected (labeled SIMULATED).',
+                      );
+                    }}
+                  >
+                    <span>Quick simulated scream (AS-101)</span>
+                    <span className="scenario-pill pill-review">Simulated</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="demo-rain-btn"
+                    className="scenario-btn"
+                    onClick={triggerBenignRain}
+                  >
+                    <span>{isRaining ? 'Stop rain visuals' : 'Toggle rain visuals (benign)'}</span>
+                    <span className="scenario-pill pill-norm">{isRaining ? 'Active' : 'Normal'}</span>
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            <details className="sidebar-details">
+              <summary>Advanced controls</summary>
+              <div className="sidebar-details-body">
+                <h3 className="sidebar-subheading">Lighting &amp; offline tests</h3>
+                <div className="demo-scenario-list">
+                  <button
+                    type="button"
+                    id="demo-dark-btn"
+                    className="scenario-btn"
+                    onClick={() => {
+                      triggerDark();
+                      setStatusBanner(
+                        'Low Lighting Warning: Lakeside Path (AS-102) virtual brightness dropped to 0%.',
+                      );
+                    }}
+                    disabled={(lighting['AS-102'] ?? 70) < 30}
+                  >
+                    <span>Dark pathway (AS-102 · 0% light)</span>
+                    <span className="scenario-pill pill-warn">Low light</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="demo-offline-btn"
+                    className="scenario-btn"
+                    onClick={() => {
+                      triggerOffline();
+                      setStatusBanner(
+                        'Coverage Warning: AS-103 missed 3 heartbeats. Area monitoring unavailable.',
+                      );
+                    }}
+                    disabled={offlinePoleId === 'AS-103'}
+                  >
+                    <span>Sensor offline (AS-103 heartbeat lost)</span>
+                    <span className="scenario-pill pill-cov">Offline</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="demo-unsafe-route-btn"
+                    className="scenario-btn"
+                    onClick={() => {
+                      triggerUnsafeRoute();
+                      setStatusBanner(
+                        blockedRouteZone === 'central_path'
+                          ? 'Central Path reopened.'
+                          : 'Central Path blocked: Emergency lighting will display "route not verified".',
+                      );
+                    }}
+                  >
+                    <span>
+                      {blockedRouteZone === 'central_path'
+                        ? 'Reopen Central Path'
+                        : 'Block Central Path (obstruction)'}
+                    </span>
+                    <span className="scenario-pill pill-cov">
+                      {blockedRouteZone === 'central_path' ? 'Open' : 'Blocked'}
+                    </span>
                   </button>
                 </div>
 
-                {latestAudioInference && (
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '10px 12px',
-                      background: 'rgba(15, 23, 42, 0.72)',
-                      border: '1px solid rgba(45, 184, 176, 0.4)',
-                      borderRadius: '8px',
-                      fontSize: 'var(--text-sm)',
-                    }}
+                <h3 className="sidebar-subheading">Background visitor activity</h3>
+                <div className="background-activity-row">
+                  <div>
+                    <div className="details-value">Benign idle actions only</div>
+                    <p className="details-note">
+                      Default OFF. Never triggers emergencies or incident status changes.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    aria-pressed={backgroundActivityEnabled}
+                    onClick={() => toggleBackgroundActivity(!backgroundActivityEnabled)}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      <strong style={{ color: 'var(--text-primary)' }}>YAMNet Audio Result</strong>
-                      <span
-                        className={
-                          latestAudioInference.source_mode === 'live'
-                            ? 'badge badge-live'
-                            : 'badge badge-recorded'
-                        }
-                        style={{ fontSize: 'var(--text-sm)' }}
-                      >
-                        {latestAudioInference.source_mode === 'live'
-                          ? 'LIVE INPUT'
-                          : 'RECORDED SAMPLE'}
-                      </span>
-                    </div>
+                    {backgroundActivityEnabled ? 'On' : 'Off'}
+                  </button>
+                </div>
 
-                    <div className="metric-row">
-                      <span className="metric-label">Classification</span>
-                      <span
-                        className={`metric-value ${
-                          latestAudioInference.event_type === 'possible_scream' ? 'warn' : 'ok'
-                        }`}
-                      >
-                        {latestAudioInference.plain_label}
-                      </span>
+                <h3 className="sidebar-subheading">Audio &amp; evidence</h3>
+                <p className="details-note">
+                  Recorded sample analysis and live microphone tests stay in the System Detection
+                  Inspector. This sidebar no longer runs duplicate audio analysis.
+                </p>
+                <Link to="/system" className="btn btn-secondary btn-sm">
+                  Open audio tests in System ↗
+                </Link>
+
+                <h3 className="sidebar-subheading">Reset controls</h3>
+                <p className="details-note">
+                  <strong>Reset view &amp; visitors</strong> restores the camera and simulated visitor
+                  positions. Saved cases stay open.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-full"
+                  onClick={handleResetViewAndVisitors}
+                >
+                  Reset view &amp; visitors
+                </button>
+                <p className="details-note">
+                  <strong>Reset demo session</strong> clears the full demo, including saved demo cases.
+                </p>
+                <button
+                  type="button"
+                  id="demo-reset-btn"
+                  className="btn btn-ghost btn-full"
+                  onClick={handleResetDemoSession}
+                >
+                  Reset demo session
+                </button>
+              </div>
+            </details>
+
+            <details className="sidebar-details">
+              <summary>LiDAR placement study (planned sensors)</summary>
+              <div className="sidebar-details-body">
+                <p className="details-note">{LIDAR_PLAN_NOTE}</p>
+                <div className="placement-toggles">
+                  <label className="toggle-label">
+                    <input
+                      type="checkbox"
+                      id="study-posts-toggle"
+                      checked={showStudyPosts}
+                      onChange={(event) => setShowStudyPosts(event.target.checked)}
+                    />
+                    Show proposed posts on map
+                  </label>
+                  <label className="toggle-label">
+                    <input
+                      type="checkbox"
+                      id="lidar-ranges-toggle"
+                      checked={showLidarRanges}
+                      disabled={!showStudyPosts}
+                      onChange={(event) => setShowLidarRanges(event.target.checked)}
+                    />
+                    Estimated range rings (13m)
+                  </label>
+                </div>
+                <label className="form-group" htmlFor="planned-lidar-select">
+                  <span className="form-label">Inspect proposed sensor</span>
+                  <select
+                    id="planned-lidar-select"
+                    className="form-control"
+                    value={selectedPlannedLidar}
+                    onChange={(event) => setSelectedPlannedLidar(event.target.value)}
+                  >
+                    <option value="">Choose a proposed sensor (PLAN-L01 to PLAN-L16)</option>
+                    {PLANNED_LIDARS.map((sensor) => (
+                      <option key={sensor.id} value={sensor.id}>
+                        {sensor.id} · {sensor.area}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedPlannedSensor && (
+                  <div className="placement-summary">
+                    <div className="blindspot-summary-header">
+                      <strong>{selectedPlannedSensor.id} · Proposed LiDAR</strong>
+                      <span className="badge badge-simulated">Non-operational</span>
                     </div>
                     <div className="metric-row">
-                      <span className="metric-label">Distress Score</span>
-                      <span className="metric-value" style={{ fontWeight: 700 }}>
-                        {Math.round((latestAudioInference.distress_score ?? 0) * 100)}%
-                      </span>
+                      <span className="metric-label">Planned zone</span>
+                      <span className="metric-value">{selectedPlannedSensor.area}</span>
                     </div>
                     <div className="metric-row">
-                      <span className="metric-label">Benign Score</span>
+                      <span className="metric-label">Nominal range</span>
                       <span className="metric-value">
-                        {Math.round((latestAudioInference.benign_score ?? 0) * 100)}%
+                        {selectedPlannedSensor.range}m (illustrative assumption)
                       </span>
                     </div>
-
-                    {latestAudioInference.top_classes && latestAudioInference.top_classes.length > 0 && (
-                      <div style={{ marginTop: '6px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                        <strong>Top AudioSet Classes:</strong>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                          {latestAudioInference.top_classes.map((c, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                background: 'rgba(255,255,255,0.07)',
-                                fontSize: 'var(--text-sm)',
-                              }}
-                            >
-                              {c.class_name}: {Math.round((c.score ?? 0) * 100)}%
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                    <div className="metric-row">
+                      <span className="metric-label">Operational detection</span>
+                      <span className="metric-value muted">Inactive (planning layer only)</span>
+                    </div>
+                    {!showStudyPosts && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setShowStudyPosts(true)}
+                      >
+                        Show on map
+                      </button>
                     )}
                   </div>
                 )}
               </div>
-            )}
-
-            {/* TAB 3: Park Environment & Lighting */}
-            {activeTab === 'env' && (
-              <div className="scenario-section">
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.4 }}>
-                  Simulate low pathway lighting, offline sensor heartbeats, and blocked routes.
-                </p>
-
-                <button
-                  id="demo-dark-btn"
-                  className="scenario-btn"
-                  onClick={() => {
-                    triggerDark();
-                    setStatusBanner('Low Lighting Warning: Lakeside Path (AS-102) virtual brightness dropped to 0%.');
-                  }}
-                  disabled={(lighting['AS-102'] ?? 70) < 30}
-                >
-                  <span>Dark Pathway (AS-102 · 0% Light)</span>
-                  <span className="scenario-pill pill-warn">Low Light</span>
-                </button>
-
-                <button
-                  id="demo-offline-btn"
-                  className="scenario-btn"
-                  onClick={() => {
-                    triggerOffline();
-                    setStatusBanner('Coverage Warning: AS-103 missed 3 heartbeats. Area monitoring unavailable.');
-                  }}
-                  disabled={offlinePoleId === 'AS-103'}
-                >
-                  <span>Sensor Offline (AS-103 Heartbeat Lost)</span>
-                  <span className="scenario-pill pill-cov">Offline</span>
-                </button>
-
-                <button
-                  id="demo-unsafe-route-btn"
-                  className="scenario-btn"
-                  onClick={() => {
-                    triggerUnsafeRoute();
-                    setStatusBanner(
-                      blockedRouteZone === 'central_path'
-                        ? 'Central Path reopened.'
-                        : 'Central Path Blocked: Emergency lighting will display "route not verified".',
-                    );
-                  }}
-                >
-                  <span>
-                    {blockedRouteZone === 'central_path'
-                      ? 'Reopen Central Path'
-                      : 'Block Central Path (Obstruction)'}
-                  </span>
-                  <span className="scenario-pill pill-cov">
-                    {blockedRouteZone === 'central_path' ? 'Open' : 'Blocked'}
-                  </span>
-                </button>
-
-                <button
-                  id="demo-rain-btn"
-                  className="scenario-btn"
-                  onClick={triggerBenignRain}
-                >
-                  <span>{isRaining ? 'Stop Rain Visuals' : 'Toggle Rain Visuals (Benign)'}</span>
-                  <span className="scenario-pill pill-norm">{isRaining ? 'Active' : 'Normal'}</span>
-                </button>
-
-                <button
-                  id="demo-scream-btn"
-                  className="scenario-btn"
-                  onClick={() => {
-                    triggerScream();
-                    setStatusBanner('Simulated Scream (AS-101): Synthetic alert injected (labeled SIMULATED).');
-                  }}
-                >
-                  <span>Quick Simulated Scream (AS-101)</span>
-                  <span className="scenario-pill pill-review">Simulated</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 3. Recent Alerts Feed */}
-          <div className="panel">
-            <h2 className="panel-title">Recent Alerts</h2>
-            <div className="feed" role="list" aria-live="polite" aria-label="Recent alerts">
-              {events.map((e) => (
-                <AlertCard key={e.id} event={e} />
-              ))}
-            </div>
+            </details>
           </div>
         </aside>
       </div>
