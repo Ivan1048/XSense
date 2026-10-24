@@ -30,9 +30,14 @@ export default function CameraAndGapOverlay({
     () =>
       CCTV_CAMERAS.map((cam) => {
         const points = cameraFootprintSectorPoints(cam);
+        // The mesh is rendered inside a group translated to the camera mount, so
+        // convert the helper's world-space points into camera-local X/Z first.
+        const [cameraX, cameraZ] = cam.position;
         const shape = new THREE.Shape();
-        shape.moveTo(points[0][0], -points[0][1]);
-        for (let i = 1; i < points.length; i++) shape.lineTo(points[i][0], -points[i][1]);
+        shape.moveTo(points[0][0] - cameraX, -(points[0][1] - cameraZ));
+        for (let i = 1; i < points.length; i++) {
+          shape.lineTo(points[i][0] - cameraX, -(points[i][1] - cameraZ));
+        }
         const geometry = new THREE.ShapeGeometry(shape);
         geometry.rotateX(-Math.PI / 2);
         return { id: cam.id, geometry };
